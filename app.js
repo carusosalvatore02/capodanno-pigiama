@@ -27,10 +27,11 @@ const S = {
   screen: 'loading',          // loading | config | login | wizard | chiuse | main
   tab: 'home',
   session: null, me: null, fam: null, members: [], serata: null, categorie: [],
-  login: { step: 'email', email: '', code: '', err: '', busy: false },
+  login: { step: giaEntrato() ? 'accedi' : 'nuovo', email: '', err: '', busy: false }, passkey: null,
   wiz: null, sheet: null, urls: {}, busy: false, channel: null, caricando: false
 };
 const app = document.getElementById('app');
+function giaEntrato() { try { return localStorage.getItem('pigiama-gia') === '1'; } catch (e) { return false; } }
 
 // ---------------------------------------------------------------- utilità
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -50,7 +51,11 @@ function erroreLeggibile(e) {
   const m = (e && (e.message || e.error_description || e.msg)) || String(e || '');
   if (/row-level security/i.test(m)) return 'Operazione non permessa.';
   if (/rate limit|too many/i.test(m)) return 'Troppi tentativi: aspetta un minuto e riprova.';
-  if (/expired|invalid.*otp|token has expired|otp/i.test(m)) return 'Codice non valido o scaduto. Richiedine uno nuovo.';
+  if (/invalid login credentials/i.test(m)) return 'Email o PIN sbagliati. Se è la prima volta, scegli "Prima volta".';
+  if (/already registered|already been registered|user_already_exists/i.test(m)) return 'Questa email è già registrata: scegli "Ho già un account".';
+  if (/password should be|weak_password|password.*characters/i.test(m)) return 'Il PIN deve avere 6 cifre.';
+  if (/NotAllowedError|not allowed|aborted|cancel/i.test(m)) return 'Operazione annullata.';
+  if (/passkey|webauthn|credential/i.test(m)) return 'Face ID / impronta non disponibile: entra con email e PIN.';
   if (/not authorized|email address not authorized/i.test(m)) return 'L\'invio delle email non è ancora attivo: avvisa ' + (C.ORGANIZZATORE || 'l\'organizzatore') + '.';
   if (/failed to fetch|network/i.test(m)) return 'Connessione assente. Controlla la rete e riprova.';
   return m || 'Qualcosa è andato storto. Riprova.';
@@ -110,6 +115,7 @@ async function caricaTutto() {
     const { data: { session } } = await sb.auth.getSession();
     S.session = session;
     if (!session) { S.screen = 'login'; return; }
+    try { localStorage.setItem('pigiama-gia', '1'); } catch (e) { /* niente */ }
 
     S.serata = await q(sb.from('serata').select('*').eq('id', 1).single());
     S.me = await q(sb.from('persone').select('*').eq('user_id', session.user.id).maybeSingle());
@@ -125,6 +131,7 @@ async function caricaTutto() {
     if (!S.wiz || S.wiz.step >= 4) { S.screen = 'main'; S.wiz = null; }
     ascoltaSerata();
     await caricaFase();
+    controllaPasskey().then(render);
   } catch (e) {
     console.error(e);
     toast(erroreLeggibile(e));
@@ -156,36 +163,62 @@ function ascoltaSerata() {
     .subscribe();
 }
 
-// ---------------------------------------------------------------- accesso
-async function inviaCodice() {
-  const email = (document.getElementById('email')?.value || S.login.email).trim().toLowerCase();
-  S.login.email = email;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { S.login.err = 'Scrivi un indirizzo email valido.'; return render(); }
-  S.login.busy = true; S.login.err = ''; render();
-  try {
-    await q(sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } }));
-    S.login.step = 'codice'; S.login.code = '';
-    toast('Codice inviato a ' + email);
-  } catch (e) { S.login.err = erroreLeggibile(e); }
-  S.login.busy = false; render();
-  setTimeout(() => document.getElementById('code')?.focus(), 50);
+// ---------------------------------------------------------------- accesso (email + PIN, più Face ID / impronta)
+const PASSKEY_OK = !!(window.PublicKeyCredential && navigator.credentials);
+function leggiLogin() {
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  if (document.getElementById('email')) S.login.email = v('email').toLowerCase();
+  return { email: S.login.email, pin: v('pin').replace(/\D/g, ''), pin2: v('pin2').replace(/\D/g, '') };
 }
-async function verificaCodice() {
-  const token = (document.getElementById('code')?.value || '').replace(/\D/g, '');
-  if (token.length !== 6) { S.login.err = 'Il codice ha 6 cifre.'; return render(); }
-  S.login.busy = true; S.login.err = ''; render();
+async function entra() {
+  const L = S.login, d = leggiLogin();
+  L.err = '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) { L.err = 'Scrivi un indirizzo email valido.'; return render(); }
+  if (d.pin.length !== 6) { L.err = 'Il PIN deve avere 6 cifre.'; return render(); }
+  if (L.step === 'nuovo' && d.pin !== d.pin2) { L.err = 'I due PIN non coincidono.'; return render(); }
+  L.busy = true; render();
   try {
-    await q(sb.auth.verifyOtp({ email: S.login.email, token, type: 'email' }));
+    if (L.step === 'nuovo') {
+      const data = await q(sb.auth.signUp({ email: d.email, password: d.pin }));
+      if (!data.session) throw new Error('Registrazione in attesa di conferma: avvisa ' + (C.ORGANIZZATORE || 'l\'organizzatore') + ' (va spenta l\'opzione "Confirm email" in Supabase).');
+    } else {
+      await q(sb.auth.signInWithPassword({ email: d.email, password: d.pin }));
+    }
     S.screen = 'loading'; render();
     await caricaTutto();
-  } catch (e) { S.login.err = erroreLeggibile(e); }
+  } catch (e) { L.err = erroreLeggibile(e); }
+  L.busy = false; render();
+}
+async function entraConPasskey() {
+  S.login.busy = true; S.login.err = ''; render();
+  try {
+    await q(sb.auth.signInWithPasskey());
+    S.screen = 'loading'; render();
+    await caricaTutto();
+  } catch (e) { S.login.err = 'Face ID / impronta non riuscito o annullato. Entra con email e PIN: poi potrai attivarlo su questo telefono.'; }
   S.login.busy = false; render();
 }
+async function controllaPasskey() {
+  S.passkey = null;
+  if (!PASSKEY_OK || !sb.auth.passkey) return;
+  try { const l = await q(sb.auth.passkey.list()); S.passkey = Array.isArray(l) ? l.length : (l && l.passkeys ? l.passkeys.length : 0); }
+  catch (e) { S.passkey = null; }
+}
+async function attivaPasskey() {
+  try {
+    await q(sb.auth.registerPasskey());
+    S.passkey = (S.passkey || 0) + 1;
+    try { localStorage.setItem('pigiama-passkey-' + S.session.user.id, '1'); } catch (e) { /* niente */ }
+    toast('Fatto! La prossima volta entri con Face ID o impronta');
+  } catch (e) { toast(erroreLeggibile(e)); }
+  render();
+}
+function passkeyRifiutata() { try { return localStorage.getItem('pigiama-passkey-no-' + S.session.user.id) === '1'; } catch (e) { return false; } }
 async function esci() {
   try { await sb.auth.signOut(); } catch (e) { /* ignora */ }
   if (S.channel) { sb.removeChannel(S.channel); S.channel = null; }
   Object.assign(S, { session: null, me: null, fam: null, members: [], wiz: null, sheet: null, tab: 'home', screen: 'login' });
-  S.login = { step: 'email', email: '', code: '', err: '', busy: false };
+  S.login = { step: 'accedi', email: S.login.email, err: '', busy: false };
   render();
 }
 
@@ -319,20 +352,20 @@ function vistaConfig() {
 }
 
 function vistaLogin() {
-  const L = S.login;
-  const corpo = L.step === 'email' ? `
+  const L = S.login, nuovo = L.step === 'nuovo';
+  const corpo = `
+    ${PASSKEY_OK && !nuovo ? `<button class="btn full" data-a="passkey" ${L.busy ? 'disabled' : ''}>Entra con Face ID / impronta</button>
+      <p class="tiny mute" style="text-align:center">Funziona se l'hai attivato su questo telefono. Altrimenti usa email e PIN.</p>` : ''}
+    <div class="seg"><button class="${!nuovo ? 'on' : ''}" data-a="logintab" data-v="accedi">Ho già un account</button><button class="${nuovo ? 'on' : ''}" data-a="logintab" data-v="nuovo">Prima volta</button></div>
+    ${nuovo ? '<p class="small mute">Scegli un PIN di 6 cifre facile da ricordare: ti servirà per entrare da un altro telefono.</p>' : ''}
     <div class="field"><label for="email">La tua email</label>
-      <input id="email" type="email" autocomplete="email" inputmode="email" value="${esc(L.email)}" placeholder="nome@email.it"></div>
+      <input id="email" type="email" autocomplete="username" inputmode="email" value="${esc(L.email)}" placeholder="nome@email.it"></div>
+    <div class="field"><label for="pin">${nuovo ? 'Scegli un PIN di 6 cifre' : 'Il tuo PIN'}</label>
+      <input id="pin" class="otp" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="${nuovo ? 'new-password' : 'current-password'}" placeholder="••••••"></div>
+    ${nuovo ? `<div class="field"><label for="pin2">Ripeti il PIN</label><input id="pin2" class="otp" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="new-password" placeholder="••••••"></div>` : ''}
     ${L.err ? `<div class="err" role="alert">${esc(L.err)}</div>` : ''}
-    <button class="btn full" data-a="invia" ${L.busy ? 'disabled' : ''}>${L.busy ? 'Invio…' : 'Ricevi il codice'}</button>
-    <p class="tiny mute">Ti mandiamo un codice di 6 cifre. Niente password.</p>`
-  : `
-    <p class="small">Abbiamo mandato un codice a <b>${esc(L.email)}</b>. Controlla anche lo spam.</p>
-    <div class="field"><label for="code">Codice di 6 cifre</label>
-      <input id="code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" placeholder="••••••"></div>
-    ${L.err ? `<div class="err" role="alert">${esc(L.err)}</div>` : ''}
-    <button class="btn full" data-a="verifica" ${L.busy ? 'disabled' : ''}>${L.busy ? 'Verifica…' : 'Entra'}</button>
-    <div class="row"><button class="btn ghost grow" data-a="reinvia" ${L.busy ? 'disabled' : ''}>Rimanda il codice</button><button class="btn ghost grow" data-a="cambiaemail">Cambia email</button></div>`;
+    <button class="btn ${PASSKEY_OK && !nuovo ? 'ghost' : ''} full" data-a="entra" ${L.busy ? 'disabled' : ''}>${L.busy ? 'Un attimo…' : nuovo ? 'Crea il mio accesso' : 'Entra'}</button>
+    ${!nuovo ? `<p class="tiny mute">PIN dimenticato? Chiedi a ${esc(C.ORGANIZZATORE || 'Salvatore')}: te lo reimposta in un attimo.</p>` : ''}`;
   return `${testata()}<div class="body in">
     <div class="hero">${ICONE.luna}<div class="t">Capodanno<br><span style="color:var(--acc)">in Pigiama!</span></div>
       <p class="mute" style="margin-top:8px">31 dicembre · a casa Caruso</p></div>
@@ -396,6 +429,7 @@ function vistaWizard() {
     const figli = S.members.filter(m => m.tipo === 'bimbo');
     b = `<div class="hero">${ICONE.luna}<h2 style="color:var(--acc)">Iscrizione completata!</h2></div>
     <div class="card row">${avatar(S.me, 56)}<div class="grow"><b>${esc(S.me.nome)} ${esc(S.me.cognome)}</b><div class="small mute">${esc(nomeFamiglia(S.fam))}</div>${figli.length ? `<div class="tiny mute">Con ${figli.map(k => esc(k.nome)).join(', ')}</div>` : ''}</div></div>
+    ${cardPasskey(false)}
     ${!isStandalone() ? guidaInstallazione() : ''}`;
   }
   const avanti = { 0: 'Avanti', 1: w.busy ? 'Salvataggio…' : 'Avanti', 2: S.members.some(m => m.tipo === 'bimbo') ? 'Avanti' : 'Non ho figli, avanti', 3: (S.fam && S.fam.foto_path) ? 'Avanti' : 'La carico dopo', 4: 'Vai all\'app' }[w.step];
@@ -439,6 +473,13 @@ function vistaMain() {
   return `${testata(`<button data-a="tab" data-v="famiglia" style="background:none;border:0;padding:0" aria-label="La mia famiglia">${avatar(S.me, 38)}</button>`)}
     <div class="body in">${corpo}</div><nav class="nav">${nav}</nav>`;
 }
+function cardPasskey(compatta) {
+  if (!PASSKEY_OK) return '';
+  if (S.passkey) return compatta ? '' : `<div class="card row"><span class="grow"><b>Face ID / impronta attivo</b><div class="tiny mute">Su un altro telefono puoi entrare anche con email e PIN.</div></span><button class="chip" data-a="attivapasskey">Aggiungi questo telefono</button></div>`;
+  if (compatta && passkeyRifiutata()) return '';
+  return `<div class="card col"><h3>Entra con Face ID o impronta</h3><p class="small mute">Attivalo ora: la prossima volta entri senza scrivere email e PIN.</p>
+    <button class="btn full" data-a="attivapasskey">Attiva Face ID / impronta</button>${compatta ? '<button class="btn ghost full" data-a="nopasskey">Non ora</button>' : ''}</div>`;
+}
 function promemoria() {
   const r = [];
   if (!S.me.foto_path) r.push(['Carica la tua foto', 'famiglia']);
@@ -460,6 +501,7 @@ function vistaHome() {
         ${luci()}
       </div>
       <div class="card"><h3>Ciao ${esc(nomeVisto(S.me))}!</h3><p class="small mute">Fai parte della ${esc(nomeFamiglia(S.fam))}.</p></div>
+      ${cardPasskey(true)}
       ${r.length ? `<div class="card"><h3>Promemoria</h3>${r.map(([t, tab]) => `<div class="reminder">• <span class="grow">${esc(t)}</span>${tab ? `<button class="chip" data-a="tab" data-v="${tab}">Vai</button>` : ''}</div>`).join('')}</div>` : ''}
       ${!isStandalone() ? guidaInstallazione() : ''}
       <div class="card"><h3>Cosa succede la sera</h3><p class="small mute">Pronostici, votazioni dei pigiami, pegni per chi arriva vestito, premiazione dei bimbi e classifiche finali. Tutto da qui, dal tuo telefono.</p></div>`;
@@ -478,6 +520,7 @@ function vistaFamiglia() {
       ${adulti.length < 2 ? `<p class="tiny mute" style="margin-top:8px">Il partner si iscrive dal suo telefono e sceglie "Unisciti".</p>` : ''}</div>
     <div class="card"><h3>Bimbi</h3>${figli.length ? figli.map(k => `<div class="member">${avatar(k)}<div class="grow"><b>${esc(k.nome)}</b><div class="tiny mute">${k.eta} anni · ${esc(k.titolo_buffo)}</div></div>${aperte ? `<button class="chip" data-a="kedit" data-v="${k.id}">Modifica</button>` : ''}</div>`).join('') : '<p class="small mute">Nessun bimbo.</p>'}
       ${aperte ? `<button class="btn ghost full" style="margin-top:10px" data-a="knew">+ Aggiungi un figlio</button>` : `<p class="tiny mute" style="margin-top:8px">Iscrizioni chiuse: per modifiche chiedi a ${esc(C.ORGANIZZATORE || 'Salvatore')}.</p>`}</div>
+    ${cardPasskey(false)}
     <button class="btn ghost full" data-a="esci">Esci dall'account</button>`;
 }
 function vistaRegole() {
@@ -901,6 +944,7 @@ function sheetAdmin(s) {
     <div class="field"><label for="ap-fam">Famiglia</label><select id="ap-fam" data-k="famiglia_id" style="padding:13px;border-radius:12px;background:var(--bg2);border:1px solid var(--line);min-height:50px">${S.adm.famiglie.map(f => `<option value="${f.id}" ${f.id === s.famiglia_id ? 'selected' : ''}>${esc(nomeFamiglia(f))}</option>`).join('')}</select></div>
     ${s.err ? `<div class="err" role="alert">${esc(s.err)}</div>` : ''}
     <button class="btn full" data-a="adsalvapersona" ${s.busy ? 'disabled' : ''}>Salva</button>
+    ${s.haAccount ? `<div class="card col"><b>PIN dimenticato?</b><div class="row"><input id="ap-pin" class="otp" type="text" inputmode="numeric" maxlength="6" placeholder="nuovo PIN"><button class="btn" data-a="adpin">Reimposta</button></div><p class="tiny mute">Scrivi 6 cifre e comunicale alla persona: entrerà con quelle.</p></div>` : ''}
     ${s.id && !s.isMe ? `<button class="btn danger full" data-a="adeliminapersona" ${s.busy ? 'disabled' : ''}>${s.conferma ? 'Tocca di nuovo per eliminare' : 'Elimina'}</button>` : ''}`;
   }
   if (s.tipo === 'adfam') return `<h2>${s.id ? 'Modifica famiglia' : 'Nuova famiglia'}</h2>
@@ -1125,7 +1169,7 @@ async function azioneAdmin(a, v, el) {
     }
     case 'adedit': {
       const p = personaDi(v);
-      S.sheet = { tipo: 'adpersona', id: p.id, ptipo: p.tipo, nome: p.nome, cognome: p.cognome || '', soprannome: p.soprannome || '', eta: p.eta == null ? '' : String(p.eta), titolo: p.titolo_buffo || '', famiglia_id: p.famiglia_id, isMe: p.id === S.me.id, err: '' };
+      S.sheet = { tipo: 'adpersona', id: p.id, ptipo: p.tipo, nome: p.nome, cognome: p.cognome || '', soprannome: p.soprannome || '', eta: p.eta == null ? '' : String(p.eta), titolo: p.titolo_buffo || '', famiglia_id: p.famiglia_id, isMe: p.id === S.me.id, haAccount: !!p.user_id, err: '' };
       return true;
     }
     case 'adnew': S.sheet = { tipo: 'adpersona', id: null, ptipo: el.dataset.t, nome: '', cognome: famDi(v).cognome, soprannome: '', eta: '', titolo: '', famiglia_id: v, err: '' }; return true;
@@ -1160,6 +1204,13 @@ async function azioneAdmin(a, v, el) {
         await caricaAdmin(); S.sheet = null; toast('Eliminato');
       } catch (e) { s.err = erroreLeggibile(e); s.busy = false; }
       return true;
+    }
+    case 'adpin': {
+      const pin = (document.getElementById('ap-pin').value || '').replace(/\D/g, '');
+      if (pin.length !== 6) { toast('Il PIN deve avere 6 cifre'); return 'fatto'; }
+      try { await q(sb.rpc('reimposta_pin', { p_persona: s.id, p_pin: pin })); toast('PIN reimpostato: ' + pin); }
+      catch (e) { toast(erroreLeggibile(e)); }
+      return 'fatto';
     }
     case 'adfamedit': { const f = famDi(v); S.sheet = { tipo: 'adfam', id: f.id, cognome: f.cognome, nickname: f.nickname, err: '' }; return true; }
     case 'adnewfam': S.sheet = { tipo: 'adfam', id: null, cognome: '', nickname: '', err: '' }; return true;
@@ -1233,8 +1284,7 @@ document.addEventListener('input', e => {
 
 document.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
-  if (e.target.id === 'email') inviaCodice();
-  if (e.target.id === 'code') verificaCodice();
+  if (['email', 'pin', 'pin2'].includes(e.target.id)) entra();
 });
 
 document.addEventListener('change', async e => {
@@ -1281,10 +1331,11 @@ document.addEventListener('click', async e => {
   if (a === 'privacy' || a === 'adchiudiiscr') return;  // gestiti da change
   try {
     switch (a) {
-      case 'invia': return inviaCodice();
-      case 'reinvia': return inviaCodice();
-      case 'verifica': return verificaCodice();
-      case 'cambiaemail': S.login.step = 'email'; S.login.err = ''; break;
+      case 'entra': return entra();
+      case 'passkey': return entraConPasskey();
+      case 'logintab': leggiLogin(); S.login.step = v; S.login.err = ''; break;
+      case 'attivapasskey': return attivaPasskey();
+      case 'nopasskey': try { localStorage.setItem('pigiama-passkey-no-' + S.session.user.id, '1'); } catch (err) { /* niente */ } break;
       case 'esci': return esci();
       case 'tab':
         S.tab = v; S.sheet = null; window.scrollTo(0, 0);

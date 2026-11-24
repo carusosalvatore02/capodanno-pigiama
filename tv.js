@@ -428,27 +428,30 @@ function schermataAvvio(msg) {
     $('start').style.display = 'none'; T.avviato = true; aggiornaMusica(); disegna();
   };
 }
-function schermataAccesso(err, passo, email) {
+function schermataAccesso(err) {
   $('start').style.display = 'flex';
   $('start').innerHTML = `<div class="t" style="font-size:56px">Capodanno <span class="acc">in Pigiama</span></div><div class="s" style="font-size:22px">Schermo TV · accedi con l'account dell'organizzatore</div>
-    ${passo === 'codice'
-      ? `<input class="txt" id="codice" inputmode="numeric" maxlength="6" placeholder="Codice di 6 cifre"><button class="btn" id="vai">Entra</button>`
-      : `<input class="txt" id="email" type="email" placeholder="La tua email"><button class="btn" id="vai">Ricevi il codice</button>`}
+    <input class="txt" id="email" type="email" autocomplete="username" placeholder="La tua email">
+    <input class="txt" id="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" placeholder="PIN di 6 cifre">
+    <button class="btn" id="vai">Entra</button>
+    ${window.PublicKeyCredential ? '<button class="btn ghost" id="pk">Entra con impronta / Face ID</button>' : ''}
     ${err ? `<div class="err">${esc(err)}</div>` : ''}`;
   $('vai').onclick = async () => {
-    try {
-      if (passo === 'codice') { await q(sb.auth.verifyOtp({ email, token: $('codice').value.trim(), type: 'email' })); avvia(); }
-      else { const e = $('email').value.trim().toLowerCase(); await q(sb.auth.signInWithOtp({ email: e, options: { shouldCreateUser: false } })); schermataAccesso('', 'codice', e); }
-    } catch (e) { schermataAccesso(e.message || 'Errore', passo, email); }
+    try { await q(sb.auth.signInWithPassword({ email: $('email').value.trim().toLowerCase(), password: $('pin').value.trim() })); avvia(); }
+    catch (e) { schermataAccesso(/invalid login/i.test(e.message || '') ? 'Email o PIN sbagliati.' : (e.message || 'Errore')); }
+  };
+  if ($('pk')) $('pk').onclick = async () => {
+    try { await q(sb.auth.signInWithPasskey()); avvia(); }
+    catch (e) { schermataAccesso('Accesso biometrico non riuscito: usa email e PIN.'); }
   };
 }
 async function avvia() {
   adatta();
   if (!C.SUPABASE_URL || C.SUPABASE_URL.includes('XXXX')) { $('start').style.display = 'flex'; $('start').innerHTML = '<div class="t" style="font-size:40px">Compila config.js</div>'; return; }
   const { data: { session } } = await sb.auth.getSession();
-  if (!session) return schermataAccesso('', 'email');
+  if (!session) return schermataAccesso('');
   try { await caricaDati(); await aggiornaAvanzamento(); }
-  catch (e) { return schermataAccesso('Questo account non può aprire lo schermo TV: usa quello dell\'organizzatore.', 'email'); }
+  catch (e) { return schermataAccesso('Questo account non può aprire lo schermo TV: usa quello dell\'organizzatore.'); }
   T.fase = T.serata.fase;
   const tv = T.serata.tv || {};
   if (tv.timer) { /* un timer vecchio non riparte */ }
