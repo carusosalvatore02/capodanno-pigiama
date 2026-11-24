@@ -1,0 +1,475 @@
+/* =====================================================================
+   CAPODANNO IN PIGIAMA — schermo TV (da aprire sul portatile collegato alla TV)
+   Segue da solo la regia dell'organizzatore: non serve toccarlo.
+   ===================================================================== */
+(() => {
+'use strict';
+const C = window.CONFIG || {};
+const sb = window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+});
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+async function q(p) { const { data, error } = await p; if (error) throw error; return data; }
+
+const T = {
+  serata: null, persone: [], famiglie: [], cat: [], pegni: [], brani: [], ris: null, avz: null, sp: null,
+  urls: {}, avviato: false, passo: -1, rivelato: false, spinAt: null, ruota: 0, girando: false,
+  timer: null, timerIv: null, cdStart: null, cdChiuso: null, fase: null, musicaGruppo: null, braniIdx: 0
+};
+
+// ---------------------------------------------------------------- suoni
+let AC = null;
+function ac() { try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume(); return AC; } catch (e) { return null; } }
+function tono(f, t0, d, tipo, vol) {
+  const a = ac(); if (!a) return;
+  const o = a.createOscillator(), g = a.createGain(); o.type = tipo || 'triangle'; o.frequency.value = f;
+  g.gain.setValueAtTime(0, a.currentTime + t0); g.gain.linearRampToValueAtTime(vol || .2, a.currentTime + t0 + .02);
+  g.gain.exponentialRampToValueAtTime(.001, a.currentTime + t0 + d);
+  o.connect(g).connect(a.destination); o.start(a.currentTime + t0); o.stop(a.currentTime + t0 + d + .05);
+}
+function rumore(t0, d, vol, hp) {
+  const a = ac(); if (!a) return;
+  const b = a.createBuffer(1, Math.max(1, a.sampleRate * d), a.sampleRate), x = b.getChannelData(0);
+  for (let i = 0; i < x.length; i++) x[i] = Math.random() * 2 - 1;
+  const s = a.createBufferSource(); s.buffer = b; const f = a.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp || 800;
+  const g = a.createGain(); g.gain.setValueAtTime(vol, a.currentTime + t0); g.gain.exponentialRampToValueAtTime(.001, a.currentTime + t0 + d);
+  s.connect(f).connect(g).connect(a.destination); s.start(a.currentTime + t0);
+}
+function abbassaMusica(sec) {
+  const m = $('musica'); if (!m || m.paused) return;
+  const v = musicaVol(); m.volume = v * .2;
+  clearTimeout(abbassaMusica.t); abbassaMusica.t = setTimeout(() => { m.volume = v; }, sec * 1000);
+}
+const suoni = {
+  tamburi(sec) { abbassaMusica(sec + 2); for (let t = 0; t < sec; t += .045) rumore(t, .05, .05 + .25 * (t / sec), 300); rumore(sec, .9, .5, 3000); tono(110, sec, .6, 'sine', .4); },
+  fanfara() { abbassaMusica(2.5); [523, 659, 784, 1047].forEach((f, i) => tono(f, i * .13, .35, 'sawtooth', .12)); tono(1047, .55, .9, 'triangle', .18); tono(784, .55, .9, 'triangle', .12); },
+  applausi() { abbassaMusica(3); for (let i = 0; i < 60; i++) rumore(Math.random() * 2.5, .03, .15 * Math.random(), 1500); },
+  ding() { tono(1320, 0, .4, 'sine', .2); tono(1760, .08, .5, 'sine', .12); },
+  tic() { tono(1800, 0, .04, 'square', .08); },
+  bip() { tono(880, 0, .12, 'sine', .15); },
+  fine() { tono(330, 0, .6, 'square', .15); }
+};
+
+// ---------------------------------------------------------------- coriandoli
+const cv = $('confetti'), cx = cv.getContext('2d'); let parti = [], raf = null;
+function coriandoli(n) {
+  cv.width = innerWidth; cv.height = innerHeight;
+  const col = ['#FFC857', '#FF9EB1', '#8FD3FF', '#A8E6A1', '#FFF6E5'];
+  for (let i = 0; i < (n || 180); i++) parti.push({ x: innerWidth / 2 + (Math.random() - .5) * innerWidth * .3, y: innerHeight * .35, vx: (Math.random() - .5) * 18, vy: -Math.random() * 16 - 4, r: Math.random() * 8 + 5, c: col[i % 5], a: Math.random() * 6, l: 180 });
+  if (!raf) giro();
+}
+function fuochi() { for (let k = 0; k < 6; k++) setTimeout(() => coriandoli(120), k * 600); }
+function giro() {
+  cx.clearRect(0, 0, cv.width, cv.height);
+  parti.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += .35; p.vx *= .99; p.a += .2; p.l--; cx.save(); cx.translate(p.x, p.y); cx.rotate(p.a); cx.fillStyle = p.c; cx.fillRect(-p.r / 2, -p.r / 4, p.r, p.r / 2); cx.restore(); });
+  parti = parti.filter(p => p.l > 0 && p.y < cv.height + 40);
+  raf = parti.length ? requestAnimationFrame(giro) : (cx.clearRect(0, 0, cv.width, cv.height), null);
+}
+
+// ---------------------------------------------------------------- dati
+const pers = id => T.persone.find(p => p.id === id) || { nome: '?' };
+const famDi = id => T.famiglie.find(f => f.id === id) || { cognome: '', nickname: '' };
+const nome = p => p.soprannome || p.nome;
+const nomeCompleto = p => p.tipo === 'adulto' ? `${nome(p)} ${p.cognome || ''}` : p.nome;
+const nomeFam = f => `Famiglia ${f.cognome} – ${f.nickname}`;
+function av(p, s) {
+  let url = p.foto_path && T.urls[p.foto_path];
+  if (!url && p.tipo === 'bimbo') { const f = famDi(p.famiglia_id); url = f.foto_path && T.urls[f.foto_path]; }
+  return `<div class="av" style="width:${s}px;height:${s}px;font-size:${s * .45}px">${url ? `<img src="${esc(url)}" alt="">` : esc((nome(p) || '?')[0])}</div>`;
+}
+function famImg(f, w, h) {
+  const url = f.foto_path && T.urls[f.foto_path];
+  return `<div class="famimg" style="width:${w}px;height:${h}px">${url ? `<img src="${esc(url)}" alt="">` : `<span class="f" style="font-size:${h * .3}px;color:var(--acc)">${esc(f.nickname[0] || '')}</span>`}</div>`;
+}
+async function preparaUrl(paths) {
+  const m = [...new Set(paths.filter(p => p && !T.urls[p]))]; if (!m.length) return;
+  try { (await q(sb.storage.from('foto').createSignedUrls(m, 60 * 60 * 8))).forEach(x => { if (x.signedUrl) T.urls[x.path] = x.signedUrl; }); } catch (e) { console.warn(e); }
+}
+async function caricaDati() {
+  const [serata, persone, famiglie, cat, pegni, brani] = await Promise.all([
+    q(sb.from('serata').select('*').eq('id', 1).single()),
+    q(sb.from('persone').select('*').order('creata_il')),
+    q(sb.from('famiglie').select('*').order('cognome')),
+    q(sb.from('categorie').select('*').order('ordine')),
+    q(sb.from('pegni').select('*').order('id')),
+    q(sb.from('brani_karaoke').select('*').order('ordine'))
+  ]);
+  Object.assign(T, { serata, persone, famiglie, cat, pegni, brani });
+  await preparaUrl([...persone.map(p => p.foto_path), ...famiglie.map(f => f.foto_path)]);
+  await caricaRisultati();
+  await caricaSpareggio();
+}
+async function caricaRisultati() {
+  if (!['premiazione', 'fine'].includes(T.serata.fase)) { T.ris = null; return; }
+  try { T.ris = await q(sb.rpc('risultati')); } catch (e) { console.warn(e); T.ris = null; }
+}
+async function caricaSpareggio() {
+  const id = T.serata.spareggio_id;
+  T.sp = id ? await q(sb.from('spareggi').select('*').eq('id', id).single()) : null;
+}
+async function aggiornaAvanzamento() {
+  try { T.avz = await q(sb.rpc('avanzamento')); } catch (e) { /* niente */ }
+}
+
+// ---------------------------------------------------------------- musica
+function musicaVol() { const m = (T.serata && T.serata.tv && T.serata.tv.musica) || {}; return m.vol == null ? .6 : m.vol; }
+function gruppoMusica() {
+  const f = T.serata.fase;
+  if (T.festa || f === 'fine') return 'festa';
+  if (f === 'premiazione') return 'premiazione';
+  return 'cena';
+}
+function aggiornaMusica() {
+  const el = $('musica'), cfg = (T.serata.tv && T.serata.tv.musica) || {}, liste = C.MUSICA || {};
+  if (!T.avviato) return;
+  const gruppo = gruppoMusica(), lista = liste[gruppo] || [];
+  if (cfg.on === false || !lista.length) { el.pause(); return; }
+  el.volume = musicaVol();
+  if (cfg.next && cfg.next !== T.ultimoNext) { T.ultimoNext = cfg.next; T.braniIdx++; el.src = lista[T.braniIdx % lista.length]; el.play().catch(() => {}); return; }
+  if (gruppo !== T.musicaGruppo || !el.src) { T.musicaGruppo = gruppo; T.braniIdx = 0; el.src = lista[0]; }
+  if (el.paused) el.play().catch(() => {});
+}
+$('musica').addEventListener('ended', () => {
+  const lista = (C.MUSICA || {})[gruppoMusica()] || []; if (!lista.length) return;
+  T.braniIdx++; $('musica').src = lista[T.braniIdx % lista.length]; $('musica').play().catch(() => {});
+});
+
+// ---------------------------------------------------------------- viste
+function luci() {
+  const c = ['#FFC857', '#FF6B6B', '#7FD8FF', '#FFF6E5', '#8EE07F'];
+  return `<div class="lights">${Array.from({ length: 22 }, (_, i) => `<i style="background:${c[i % 5]};box-shadow:0 0 12px ${c[i % 5]}"></i>`).join('')}</div>`;
+}
+function qr() {
+  try {
+    const url = new URL('./', location.href).href;
+    const x = qrcode(0, 'M'); x.addData(url); x.make();
+    return `<div style="background:#FFF6E5;padding:14px;border-radius:18px;width:190px;height:190px">${x.createSvgTag({ cellSize: 4, margin: 0, scalable: true })}</div>`;
+  } catch (e) { return ''; }
+}
+function vistaAccoglienza() {
+  const pres = T.persone.filter(p => p.presente).length;
+  return `<div class="c"><div class="s in">31 dicembre · Cena di Capodanno</div>
+    <div class="t in2" style="margin:14px 0 24px">Capodanno<br><span class="acc">in Pigiama!</span></div>
+    <div class="row in3" style="gap:36px">${qr()}<div style="text-align:left"><div class="f" style="font-size:40px">Inquadra il QR</div><div class="s" style="font-size:26px">per aprire l'app</div>
+      <div class="f acc" style="font-size:34px;margin-top:12px">Presenti ${pres}/${T.persone.length}</div></div></div></div>
+    ${luci()}`;
+}
+function vistaProgressi(titolo, n, tot, extra) {
+  return `<div class="c"><div class="t in" style="font-size:84px">${titolo}</div>
+    <div class="s in2" style="margin:26px 0 14px">${esc(extra)} ${n}/${tot}</div><div class="bar in2"><i style="width:${tot ? n / tot * 100 : 0}%"></i></div>
+    ${T.serata.fase === 'votazioni' ? candidatiCheScorrono() : ''}</div>${luci()}`;
+}
+function candidatiCheScorrono() {
+  const g = T.persone.filter(p => p.presente && !p.senza_pigiama);
+  if (!g.length) return '';
+  const blocco = g.map(p => `<div style="display:flex;flex-direction:column;align-items:center;gap:8px;width:120px">${av(p, 96)}<div style="font-weight:800;font-size:19px">${esc(nome(p))}</div></div>`).join('');
+  return `<div style="width:100%;overflow:hidden;margin-top:40px"><div class="scorri" style="width:max-content">${blocco}${blocco}</div></div>`;
+}
+function passoCorrente() { const tv = T.serata.tv || {}; return tv.steps && tv.steps[tv.i || 0]; }
+function vistaPremiazione() {
+  const s = passoCorrente(), tv = T.serata.tv || {}, R = T.ris;
+  if (!s) return `<div class="c"><div class="t">Premiazione</div></div>`;
+  const cat = s.c ? (T.cat.find(c => c.id === s.c) || {}) : null;
+  const rc = s.c && R ? R.premi.find(x => x.categoria_id === s.c) : null;
+  switch (s.k) {
+    case 'intro': return `<div class="c"><div class="s in">E ora…</div><div class="t in2 acc" style="font-size:124px">La premiazione!</div></div>${luci()}`;
+    case 'pegniIntro': return `<div class="c"><div class="t in">I pegni</div><div class="s in2" style="margin-top:20px">Chi è arrivato senza pigiama… paga!</div></div>`;
+    case 'nopegni': return `<div class="c"><div class="t pop acc">Tutti in pigiama!</div><div class="s in2" style="margin-top:20px">Nessun pegno da pagare. Bravi!</div></div>`;
+    case 'pegno': return vistaPegno(s, tv);
+    case 'bimbiIntro': return `<div class="c"><div class="s in">E ora chiamiamo sul palco…</div><div class="t in2 acc">i nostri bimbi!</div></div>${luci()}`;
+    case 'bimbo': { const p = pers(s.pid); return `<div class="c"><div class="pop">${av(p, 250)}</div><div class="t in2" style="font-size:104px;margin-top:22px">${esc(p.nome.toUpperCase())}</div><div class="f in3 acc" style="font-size:46px;margin-top:6px">${esc(p.titolo_buffo || '')}</div><div class="s in3" style="margin-top:8px">${esc(nomeFam(famDi(p.famiglia_id)))}</div></div>`; }
+    case 'bimbiFine': { const k = T.persone.filter(p => p.tipo === 'bimbo' && p.presente); return `<div class="c"><div class="t in" style="font-size:76px">Bravissimi, <span class="acc">campioni del pigiama!</span></div><div class="row in2" style="gap:34px;margin-top:40px;flex-wrap:wrap;justify-content:center">${k.map(p => `<div style="display:flex;flex-direction:column;align-items:center;gap:8px">${av(p, 120)}<div class="f" style="font-size:28px">${esc(p.nome)}</div></div>`).join('')}</div></div>`; }
+    case 'catTitle': return `<div class="c"><div class="s in">E il premio per…</div><div class="t in2 acc" style="font-size:110px">${esc(cat.nome)}</div></div>`;
+    case 'catFinal': {
+      if (!rc) return attesaRisultati();
+      const f = rc.classifica.slice(0, 3).sort((a, b) => String(a.persona_id).localeCompare(String(b.persona_id)));
+      const jolly = rc.jolly_finalisti || [];
+      return `<div class="c"><div class="f in acc" style="font-size:42px">${esc(cat.nome)}</div><div class="t in" style="font-size:70px;margin-top:6px">${f.length ? 'I finalisti' : 'Nessun voto'}</div>
+        <div class="fin in2">${f.map(x => { const p = pers(x.persona_id); return `<div>${av(p, 180)}${esc(nomeCompleto(p))}</div>`; }).join('')}</div>
+        ${jolly.length ? `<div class="card in3" style="margin-top:34px;font-size:30px;font-weight:800;border-color:var(--pink)">Attenzione… ${jolly.map(id => esc(nome(pers(id)))).join(' e ')} ${jolly.length > 1 ? 'avevano' : 'aveva'} giocato il jolly!</div>` : ''}</div>`;
+    }
+    case 'catWin': return vistaVincitore(cat, rc);
+    case 'famFinal': {
+      if (!R) return attesaRisultati();
+      return `<div class="c"><div class="f in acc" style="font-size:42px">Premio famiglia</div><div class="t in" style="font-size:70px">Le finaliste</div>
+        <div class="fin in2">${R.famiglie.slice(0, 3).sort((a, b) => String(a.famiglia_id).localeCompare(String(b.famiglia_id))).map(x => { const f = famDi(x.famiglia_id); return `<div>${famImg(f, 300, 200)}${esc(f.nickname)}</div>`; }).join('')}</div></div>`;
+    }
+    case 'famWin': {
+      if (!R) return attesaRisultati();
+      if (!T.rivelato) return `<div class="c"><div class="f acc" style="font-size:44px">Premio famiglia</div><div class="t pulse" style="margin-top:30px">E la famiglia vincitrice è…</div></div>`;
+      const x = R.famiglie[0], f = famDi(x.famiglia_id), ind = R.famiglia_indovinata_da || [];
+      return `<div class="c"><div class="f acc" style="font-size:40px">Premio famiglia</div><div class="pop" style="margin-top:18px">${famImg(f, 440, 280)}</div>
+        <div class="t in2" style="font-size:80px;margin-top:18px">${esc(nomeFam(f))}</div><div class="s in3">Media ${Number(x.media).toFixed(2).replace('.', ',')} stelle a testa</div></div>${striscia(ind)}`;
+    }
+    case 'clAd': {
+      if (!R) return attesaRisultati();
+      const righe = R.adulti, n = righe.length, segno = v => v == null ? '–' : (v > 0 ? '+' : '') + v;
+      // svelata dal basso: prima gli ultimi, poi il podio uno alla volta
+      return `<div class="c" style="justify-content:flex-start;padding-top:30px"><div class="t in" style="font-size:60px;margin-bottom:16px">Classifica <span class="acc">adulti</span></div>
+        <table class="cl"><tr><th>Pos.</th><th>Nome</th><th class="n">Pigiama</th><th class="n">Pronostico</th><th class="n">Jolly</th><th class="n">Totale</th></tr>
+        ${righe.slice(0, 12).map((a, i) => { const p = pers(a.persona_id); const rit = i < 3 ? (n > 3 ? Math.min(n, 12) - 3 : 0) * .25 + (3 - i) * 1.6 : (Math.min(n, 12) - 1 - i) * .25; return `<tr class="${i < 3 ? 'pod' : ''}" style="animation:in .6s ${rit.toFixed(2)}s both"><td>${i + 1}</td><td><b>${esc(nomeCompleto(p))}</b></td><td class="n">${a.pigiama}</td><td class="n">${segno(a.pronostico)}</td><td class="n">${segno(a.jolly)}</td><td class="n f">${a.totale}</td></tr>`; }).join('')}</table></div>`;
+    }
+    case 'clFam': {
+      if (!R) return attesaRisultati();
+      const n = R.famiglie.length;
+      return `<div class="c"><div class="t in" style="font-size:60px;margin-bottom:26px">Classifica <span class="acc">famiglie</span></div>
+        <table class="cl" style="width:900px"><tr><th>Pos.</th><th>Famiglia</th><th class="n">Media stelle</th></tr>
+        ${R.famiglie.map((x, i) => `<tr class="${i === 0 ? 'pod' : ''}" style="animation:in .6s ${((n - 1 - i) * .6).toFixed(2)}s both"><td>${i + 1}</td><td><b>${esc(nomeFam(famDi(x.famiglia_id)))}</b></td><td class="n f">${Number(x.media).toFixed(2).replace('.', ',')}</td></tr>`).join('')}</table></div>`;
+    }
+    case 'fine': return `<div class="c"><div class="t pop acc" style="font-size:150px">Buon anno!</div><div class="s in2" style="margin-top:20px">Grazie a tutti i pigiami della serata</div></div>${luci()}`;
+  }
+  return '';
+}
+function attesaRisultati() { return `<div class="c"><div class="t pulse">Un attimo…</div></div>`; }
+function striscia(ids) {
+  if (!ids.length) return `<div class="strip in3">Nessuno aveva indovinato!</div>`;
+  return `<div class="strip in3">${ids.length === 1 ? 'Solo 1 aveva' : `In ${ids.length} avevano`} indovinato! ${ids.map(id => { const p = pers(id); return `<span class="row">${av(p, 40)}${esc(nome(p))}</span>`; }).join('')}</div>`;
+}
+function vistaVincitore(cat, rc) {
+  if (!rc) return attesaRisultati();
+  if (T.sp && T.sp.categoria_id === cat.id && !T.sp.vincitore_id) return vistaSpareggio(cat);
+  if (!rc.vincitore_id && rc.pareggio) {
+    return `<div class="c"><div class="f acc" style="font-size:42px">${esc(cat.nome)}</div><div class="t pop" style="color:var(--pink);margin:16px 0">Pareggio!</div>
+      <div class="fin in2">${rc.in_parita.map(id => { const p = pers(id); return `<div>${av(p, 170)}${esc(nomeCompleto(p))}</div>`; }).join('')}</div>
+      <div class="s in3" style="margin-top:28px">Sfilata! Poi si vota dal telefono</div></div>`;
+  }
+  if (!T.rivelato) return `<div class="c"><div class="f acc" style="font-size:44px">${esc(cat.nome)}</div><div class="t pulse" style="margin-top:30px">E il vincitore è…</div></div>`;
+  const w = rc.vincitore_id ? pers(rc.vincitore_id) : null;
+  const voti = w ? ((rc.classifica.find(x => x.persona_id === rc.vincitore_id) || {}).voti || 0) : 0;
+  return `<div class="c"><div class="f acc" style="font-size:40px">${esc(cat.nome)}</div>
+    ${w ? `<div class="pop" style="margin-top:16px">${av(w, 250)}</div><div class="t in2" style="font-size:92px;margin-top:18px">${esc(nomeCompleto(w))}</div><div class="s in3">${voti} vot${voti === 1 ? 'o' : 'i'}</div>` : '<div class="t" style="margin-top:20px">Nessun voto</div>'}</div>
+    ${w ? striscia(rc.indovinato_da || []) : ''}`;
+}
+function vistaSpareggio(cat) {
+  const sp = T.sp, resta = Math.max(0, Math.ceil((new Date(sp.fine) - new Date()) / 1000));
+  const votanti = (T.avz && T.avz.spareggio_votanti) || 0, adulti = (T.avz && T.avz.adulti_presenti) || 0;
+  return `<div class="c"><div class="f acc" style="font-size:40px">${esc(cat.nome)} · Spareggio</div>
+    <div class="t" id="spresta" style="font-size:180px;margin:6px 0;${resta <= 5 ? 'color:var(--bad)' : ''}">${resta}</div>
+    <div class="fin" style="margin-top:0">${sp.candidati.map(id => { const p = pers(id); return `<div>${av(p, 150)}${esc(nomeCompleto(p))}</div>`; }).join('')}</div>
+    <div class="s" style="margin-top:22px">Aprite l'app per votare! · Hanno votato ${votanti}/${adulti}</div></div>`;
+}
+function vistaPegno(s, tv) {
+  const p = pers(s.pid), chiave = s.pid + '-' + s.g, pid = (tv.draws || {})[chiave];
+  const pg = pid && !T.girando ? T.pegni.find(x => x.id === pid) : null;
+  const karaoke = pg && pg.supporto === 'karaoke';
+  const brano = karaoke && tv.karaoke ? T.brani.find(b => b.id === tv.karaoke) : null;
+  return `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:space-around;padding:40px">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:16px;width:560px;text-align:center">
+      ${av(p, 170)}<div class="f" style="font-size:50px">${esc(nomeCompleto(p))}</div>
+      <div class="s">Senza pigiama… paga pegno!</div><div class="card" style="font-size:22px;padding:8px 18px">Pegno ${s.g} di 2</div>
+      ${pg ? `<div class="card pop" style="font-size:32px;font-weight:800;border-color:var(--acc)">${esc(pg.testo)}</div>` : ''}
+      <div id="timerbox"></div>
+      ${tv.card && pg && ['mimo', 'canzone'].includes(pg.supporto) ? `<div class="card" style="font-size:24px">Carta pescata: la vede solo l'organizzatore</div>` : ''}
+      ${karaoke ? (brano ? `<div class="karaoke"><div class="s" style="margin-bottom:10px">Si canta:</div><a href="${esc(brano.url)}" target="_blank" rel="noopener">${esc(brano.titolo)} ▶</a></div>`
+        : T.brani.length ? `<div class="card" style="font-size:22px;text-align:left">${T.brani.map((b, i) => `<div>${i + 1}. ${esc(b.titolo)}</div>`).join('')}</div>` : '') : ''}
+    </div>${ruotaSVG()}</div>`;
+}
+function ruotaSVG() {
+  const lista = T.pegni.filter(p => p.attivo); const n = lista.length || 1, seg = 360 / n, R = 250;
+  const col = ['#FFC857', '#FF9EB1', '#8FD3FF', '#A8E6A1', '#FFF6E5'];
+  const corto = t => t.length > 22 ? t.slice(0, 21) + '…' : t;
+  const fette = lista.map((p, i) => {
+    const a0 = (i * seg - 90) * Math.PI / 180, a1 = ((i + 1) * seg - 90) * Math.PI / 180, mid = i * seg + seg / 2;
+    return `<path d="M0 0L${R * Math.cos(a0)} ${R * Math.sin(a0)}A${R} ${R} 0 0 1 ${R * Math.cos(a1)} ${R * Math.sin(a1)}Z" fill="${col[i % 5]}" stroke="#1B2346" stroke-width="3"/>
+      <text transform="rotate(${mid}) translate(0 -${R * .55}) rotate(90)" text-anchor="middle" dominant-baseline="middle" font-family="Fredoka" font-weight="700" font-size="${n > 12 ? 13 : 16}" fill="#1B2346">${esc(corto(p.testo))}</text>`;
+  }).join('');
+  return `<div style="position:relative;width:540px;height:540px;flex:none"><svg viewBox="-270 -270 540 540" width="540" height="540"><g id="ruota" style="transform:rotate(${T.ruota}deg)">${fette}</g><circle r="34" fill="#1B2346" stroke="#FFC857" stroke-width="6"/></svg>
+    <div style="position:absolute;left:50%;top:-14px;transform:translateX(-50%);width:0;height:0;border-left:22px solid transparent;border-right:22px solid transparent;border-top:44px solid #FFF6E5"></div></div>`;
+}
+function scena() {
+  const f = T.serata.fase, z = T.avz || {};
+  if (f === 'iscrizioni' || f === 'attesa') return vistaAccoglienza();
+  if (f === 'pronostici') return vistaProgressi('Fate i vostri<br><span class="acc">pronostici!</span>', z.pronostici_completi || 0, z.adulti_presenti || 0, 'Pronostici fatti');
+  if (f === 'votazioni') return vistaProgressi('Votazioni <span class="acc">aperte!</span>', z.voti_completi || 0, z.adulti_presenti || 0, 'Voti confermati');
+  if (f === 'votazioni_chiuse') return `<div class="c"><div class="t in">Votazioni <span class="acc">chiuse</span></div><div class="s in2" style="margin-top:24px">Tra poco la premiazione…</div></div>${luci()}`;
+  return vistaPremiazione();
+}
+function disegna() {
+  if (T.girando) return;
+  $('scena').innerHTML = scena();
+  disegnaTimer();
+}
+
+// ---------------------------------------------------------------- reazioni ai cambiamenti della regia
+function entraPasso() {
+  const s = passoCorrente(); if (!s) return;
+  T.rivelato = false; T.rivelando = false; fermaTimer();
+  if (s.k === 'catWin' || s.k === 'famWin') rivela();
+  if (s.k === 'bimbo') { suoni.fanfara(); suoni.applausi(); coriandoli(100); }
+  if (s.k === 'bimbiFine' || s.k === 'fine') { suoni.fanfara(); fuochi(); }
+  if (['intro', 'catTitle', 'catFinal', 'famFinal', 'pegniIntro', 'bimbiIntro'].includes(s.k)) tono(660, 0, .3, 'triangle', .15);
+  if (s.k === 'clAd') { const n = T.ris ? Math.min(T.ris.adulti.length, 12) : 0; setTimeout(() => { suoni.tamburi(1.4); }, Math.max(0, (n - 3) * 250 + 3200)); setTimeout(() => { suoni.fanfara(); coriandoli(200); }, Math.max(0, (n - 3) * 250 + 4900)); }
+  if (s.k === 'clFam') setTimeout(() => { suoni.fanfara(); coriandoli(160); }, (T.ris ? T.ris.famiglie.length - 1 : 0) * 600 + 700);
+}
+function rivela() {
+  const s = passoCorrente(), i = (T.serata.tv || {}).i;
+  if (T.rivelando || T.rivelato) return;
+  if (s.k === 'catWin') {
+    const rc = T.ris && T.ris.premi.find(x => x.categoria_id === s.c);
+    if (!rc || (!rc.vincitore_id && rc.pareggio)) { if (rc && rc.pareggio && !T.sp) suoni.tamburi(.8); return; }
+  }
+  T.rivelando = true; suoni.tamburi(1.8);
+  setTimeout(() => { T.rivelando = false; if ((T.serata.tv || {}).i === i) { T.rivelato = true; suoni.fanfara(); suoni.applausi(); coriandoli(220); disegna(); } }, 1900);
+}
+function giraRuota(spin) {
+  const lista = T.pegni.filter(p => p.attivo), idx = lista.findIndex(p => p.id === spin.pegno);
+  if (idx < 0) return;
+  const seg = 360 / lista.length, target = 360 - (idx * seg + seg / 2), cur = ((T.ruota % 360) + 360) % 360;
+  let delta = target - cur; if (delta < 0) delta += 360;
+  T.girando = false; disegna();            // ruota ferma nella posizione di prima
+  T.ruota += 360 * 5 + delta; T.girando = true;
+  requestAnimationFrame(() => {
+    const g = $('ruota'); if (!g) { T.girando = false; return; }
+    g.style.transition = 'transform 4.2s cubic-bezier(.12,.6,.1,1)'; g.style.transform = `rotate(${T.ruota}deg)`;
+  });
+  let k = 0; const iv = setInterval(() => { suoni.tic(); if (++k > 30) clearInterval(iv); }, 140);
+  setTimeout(() => { T.girando = false; suoni.ding(); coriandoli(60); disegna(); }, 4300);
+}
+function avviaTimer(t) {
+  fermaTimer();
+  T.timer = { id: t.id, resta: t.sec, target: t.target || 0, count: t.count || 0 };
+  T.timerIv = setInterval(() => {
+    T.timer.resta--;
+    if (T.timer.resta <= 5 && T.timer.resta > 0) suoni.tic();
+    if (T.timer.resta <= 0) { clearInterval(T.timerIv); T.timerIv = null; suoni.fine(); }
+    disegnaTimer();
+  }, 1000);
+  disegnaTimer();
+}
+function fermaTimer() { if (T.timerIv) clearInterval(T.timerIv); T.timerIv = null; T.timer = null; }
+function disegnaTimer() {
+  const box = $('timerbox'); if (!box) return;
+  const t = T.timer; if (!t) { box.innerHTML = ''; return; }
+  const fallito = t.resta <= 0 && t.target && t.count < t.target, riuscito = t.target && t.count >= t.target;
+  box.innerHTML = `<div class="f ${t.resta <= 5 && !riuscito ? 'pulse' : ''}" style="font-size:110px;color:${t.resta <= 5 && !riuscito ? 'var(--bad)' : 'var(--acc)'}">${Math.max(0, t.resta)}</div>
+    ${t.target ? `<div class="f" style="font-size:44px">${t.count}/${t.target}${fallito ? ' · Si ricomincia!' : riuscito ? ' · Ce l\'ha fatta!' : ''}</div>` : ''}`;
+}
+
+async function suCambioSerata(nuova) {
+  const prima = T.serata; T.serata = nuova;
+  const tvP = (prima && prima.tv) || {}, tvN = nuova.tv || {};
+  const cambiataFase = !prima || prima.fase !== nuova.fase;
+  if (cambiataFase || prima.spareggio_id !== nuova.spareggio_id) {
+    if (cambiataFase) { T.persone = await q(sb.from('persone').select('*').order('creata_il')); await preparaUrl(T.persone.map(p => p.foto_path)); }
+    await caricaRisultati(); await caricaSpareggio(); await aggiornaAvanzamento();
+    const s = passoCorrente();
+    if (!cambiataFase && prima.spareggio_id && !nuova.spareggio_id && s && s.k === 'catWin') rivela();
+  }
+  const passoP = tvP.steps ? tvP.i : -1, passoN = tvN.steps ? tvN.i : -1;
+  const cambioPasso = passoP !== passoN || JSON.stringify(tvP.steps) !== JSON.stringify(tvN.steps);
+  if (cambioPasso) { if (!T.ris && ['premiazione', 'fine'].includes(nuova.fase)) await caricaRisultati(); entraPasso(); }
+  if (tvN.spin && (!tvP.spin || tvN.spin.at !== tvP.spin.at) && !cambioPasso) { disegna(); giraRuota(tvN.spin); }
+  else if (!T.girando) disegna();
+  if (tvN.timer && (!tvP.timer || tvN.timer.id !== tvP.timer.id)) avviaTimer(tvN.timer);
+  else if (tvN.timer && T.timer && tvN.timer.count !== T.timer.count) {
+    T.timer.count = tvN.timer.count; suoni.ding();
+    if (T.timer.target && T.timer.count >= T.timer.target) { clearInterval(T.timerIv); T.timerIv = null; suoni.fanfara(); coriandoli(80); }
+    disegnaTimer();
+  }
+  const cdP = (tvP.countdown || {}), cdN = (tvN.countdown || {});
+  if (cdN.ora && cdN.ora !== cdP.ora) { T.cdStart = Date.now(); T.cdChiuso = null; }
+  if (cambiataFase) aggiornaMusica();
+  if (JSON.stringify(tvP.musica) !== JSON.stringify(tvN.musica)) aggiornaMusica();
+}
+// Quando lo spareggio si chiude (o si allunga) aggiorna risultati e timer
+async function suCambioSpareggio() {
+  await caricaSpareggio(); await caricaRisultati();
+  const s = passoCorrente();
+  if (s && s.k === 'catWin' && (!T.sp || T.sp.vincitore_id)) rivela();
+  disegna();
+}
+
+// ---------------------------------------------------------------- countdown di mezzanotte
+function mezzanotte() {
+  const base = new Date(C.DATA_FESTA || '2026-12-31T20:00:00+01:00');
+  const m = new Date(base); m.setHours(24, 0, 0, 0);
+  const rinvio = ((T.serata && T.serata.tv && T.serata.tv.countdown) || {}).rinvio || 0;
+  return m.getTime() + rinvio * 60000;
+}
+function tickCountdown() {
+  const el = $('cd'); let target, inizio;
+  if (T.cdStart) { target = T.cdStart + 10000; inizio = T.cdStart; }
+  else { target = mezzanotte(); inizio = target - 5 * 60000; }
+  const ora = Date.now(), resta = Math.ceil((target - ora) / 1000);
+  const attivo = ora >= inizio && ora < target + 120000;
+  if (!attivo) { if (el.style.display !== 'none') { el.style.display = 'none'; if (T.cdStart && ora >= target + 120000) T.cdStart = null; } return; }
+  el.style.display = 'flex';
+  const anno = new Date(C.DATA_FESTA || '2026-12-31T20:00:00+01:00').getFullYear() + 1;
+  if (resta > 10) {
+    const mm = Math.floor(resta / 60), ss = String(resta % 60).padStart(2, '0');
+    el.innerHTML = `<div class="s">Mezzanotte tra</div><div class="t acc" style="font-size:240px">${mm}:${ss}</div>${luci()}`;
+  } else if (resta > 0) {
+    if (T.ultimoNum !== resta) { T.ultimoNum = resta; suoni.bip(); }
+    el.innerHTML = `<div class="t pop acc" style="font-size:360px">${resta}</div>`;
+  } else {
+    if (T.ultimoBoom !== target) { T.ultimoBoom = target; suoni.fanfara(); suoni.applausi(); fuochi(); setTimeout(fuochi, 4000); if (!T.cdStart) { T.festa = true; aggiornaMusica(); } }
+    el.innerHTML = `<div class="t pop acc" style="font-size:170px">Buon ${anno}!</div><div class="s in2" style="margin-top:24px">Auguri a tutti!</div>${luci()}`;
+  }
+}
+
+// ---------------------------------------------------------------- adattamento allo schermo
+function adatta() {
+  const s = Math.min(innerWidth / 1280, innerHeight / 720);
+  $('stage').style.transform = `scale(${s})`;
+}
+addEventListener('resize', adatta);
+
+// ---------------------------------------------------------------- avvio
+function schermataAvvio(msg) {
+  $('start').style.display = 'flex';
+  $('start').innerHTML = `<div class="t" style="font-size:56px">Capodanno <span class="acc">in Pigiama</span></div><div class="s" style="font-size:24px">Schermo TV</div>
+    ${msg || ''}<button class="btn" id="avvia">Avvia schermo TV</button>
+    <p class="s" style="font-size:16px;max-width:560px">Il tocco serve a sbloccare suoni e musica. Poi lo schermo va da solo: si comanda tutto dal telefono, nella scheda Regia.</p>`;
+  $('avvia').onclick = async () => {
+    ac(); suoni.ding();
+    try { await document.documentElement.requestFullscreen(); } catch (e) { /* facoltativo */ }
+    try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) { /* facoltativo */ }
+    $('start').style.display = 'none'; T.avviato = true; aggiornaMusica(); disegna();
+  };
+}
+function schermataAccesso(err, passo, email) {
+  $('start').style.display = 'flex';
+  $('start').innerHTML = `<div class="t" style="font-size:56px">Capodanno <span class="acc">in Pigiama</span></div><div class="s" style="font-size:22px">Schermo TV · accedi con l'account dell'organizzatore</div>
+    ${passo === 'codice'
+      ? `<input class="txt" id="codice" inputmode="numeric" maxlength="6" placeholder="Codice di 6 cifre"><button class="btn" id="vai">Entra</button>`
+      : `<input class="txt" id="email" type="email" placeholder="La tua email"><button class="btn" id="vai">Ricevi il codice</button>`}
+    ${err ? `<div class="err">${esc(err)}</div>` : ''}`;
+  $('vai').onclick = async () => {
+    try {
+      if (passo === 'codice') { await q(sb.auth.verifyOtp({ email, token: $('codice').value.trim(), type: 'email' })); avvia(); }
+      else { const e = $('email').value.trim().toLowerCase(); await q(sb.auth.signInWithOtp({ email: e, options: { shouldCreateUser: false } })); schermataAccesso('', 'codice', e); }
+    } catch (e) { schermataAccesso(e.message || 'Errore', passo, email); }
+  };
+}
+async function avvia() {
+  adatta();
+  if (!C.SUPABASE_URL || C.SUPABASE_URL.includes('XXXX')) { $('start').style.display = 'flex'; $('start').innerHTML = '<div class="t" style="font-size:40px">Compila config.js</div>'; return; }
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return schermataAccesso('', 'email');
+  try { await caricaDati(); await aggiornaAvanzamento(); }
+  catch (e) { return schermataAccesso('Questo account non può aprire lo schermo TV: usa quello dell\'organizzatore.', 'email'); }
+  T.fase = T.serata.fase;
+  const tv = T.serata.tv || {};
+  if (tv.timer) { /* un timer vecchio non riparte */ }
+  sb.channel('tv')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'serata' }, p => { suCambioSerata(p.new).catch(e => console.warn(e)); })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'spareggi' }, () => { suCambioSpareggio().catch(e => console.warn(e)); })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'estrazioni_pegni' }, () => {})
+    .subscribe();
+  setInterval(async () => {
+    const f = T.serata.fase;
+    await aggiornaAvanzamento();
+    if (['iscrizioni', 'attesa'].includes(f)) { try { T.persone = await q(sb.from('persone').select('*').order('creata_il')); } catch (e) { /* niente */ } }
+    if (!T.girando && ['iscrizioni', 'attesa', 'pronostici', 'votazioni'].includes(f)) disegna();
+  }, 4000);
+  setInterval(() => {
+    tickCountdown();
+    if (T.sp && !T.sp.vincitore_id) { const el = $('spresta'); if (el) { const r = Math.max(0, Math.ceil((new Date(T.sp.fine) - new Date()) / 1000)); el.textContent = r; el.style.color = r <= 5 ? 'var(--bad)' : ''; if (r <= 5 && r > 0) suoni.tic(); } }
+  }, 1000);
+  setInterval(() => { if (T.sp && !T.sp.vincitore_id) aggiornaAvanzamento().then(() => { const s = passoCorrente(); if (s && s.k === 'catWin') disegna(); }); }, 3000);
+  disegna();
+  schermataAvvio();
+}
+avvia();
+})();
