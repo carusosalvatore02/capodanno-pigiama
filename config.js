@@ -3,7 +3,7 @@
 // Supabase › Project Settings › API
 // =====================================================
 window.CONFIG = {
-  SUPABASE_URL: 'https://lmmpezprjsimpwbybios.supabase.co/rest/v1/',
+  SUPABASE_URL: 'https://lmmpezprjsimpwbybios.supabase.co',
   SUPABASE_ANON_KEY: 'sb_publishable_PlmqE7dTMua939jhGp1fvw_ic-a110i',
 
   // Data e ora della festa (ora italiana)
