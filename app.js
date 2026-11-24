@@ -335,7 +335,7 @@ function vistaLogin() {
     <div class="row"><button class="btn ghost grow" data-a="reinvia" ${L.busy ? 'disabled' : ''}>Rimanda il codice</button><button class="btn ghost grow" data-a="cambiaemail">Cambia email</button></div>`;
   return `${testata()}<div class="body in">
     <div class="hero">${ICONE.luna}<div class="t">Capodanno<br><span style="color:var(--acc)">in Pigiama!</span></div>
-      <p class="mute" style="margin-top:8px">31 dicembre · a casa di ${esc(C.ORGANIZZATORE || 'Salvatore')}</p></div>
+      <p class="mute" style="margin-top:8px">31 dicembre · a casa Caruso</p></div>
     ${luci()}
     <div class="card col">${corpo}</div>
   </div>`;
