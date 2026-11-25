@@ -158,14 +158,20 @@ function crea(cont, opz) {
   opz = Object.assign({ modo: 'app', max: 2, scala: .45, terra: () => cont.clientHeight, riquadri: () => [] }, opz || {});
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('width', '100%'); svg.setAttribute('height', '100%');
-  svg.style.cssText = 'position:absolute;inset:0;overflow:visible;pointer-events:none';
+  svg.style.cssText = 'position:absolute;inset:0;overflow:visible;pointer-events:none;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none';
+  cont.style.touchAction = 'none'; cont.style.webkitTouchCallout = 'none'; cont.style.webkitUserSelect = 'none'; cont.style.userSelect = 'none';
+  // niente menu "salva immagine" né lente/selezione tenendo premuto
+  cont.addEventListener('contextmenu', e => e.preventDefault());
+  cont.addEventListener('dragstart', e => e.preventDefault());
+  cont.addEventListener('selectstart', e => e.preventDefault());
   cont.appendChild(svg);
   const fumi = document.createElement('div'); fumi.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:visible'; cont.appendChild(fumi);
   if (!document.getElementById('omini-css')) {
     const st = document.createElement('style'); st.id = 'omini-css';
     st.textContent = `.om-fum{position:absolute;background:#FFF6E5;color:#1B2346;font:800 15px 'Fredoka','Nunito',system-ui,sans-serif;padding:5px 11px;border-radius:14px;white-space:nowrap;transform:translate(-50%,-100%);box-shadow:0 3px 10px rgba(0,0,0,.25)}
     .om-fum::after{content:'';position:absolute;left:50%;bottom:-7px;border:7px solid transparent;border-top-color:#FFF6E5;border-bottom:0;transform:translateX(-50%)}
-    .om-g{pointer-events:visiblePainted;cursor:grab;touch-action:none}`;
+    .om-g{pointer-events:visiblePainted;cursor:grab;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+    .om-g image{pointer-events:none;-webkit-touch-callout:none;-webkit-user-drag:none}`;
     document.head.appendChild(st);
   }
   let persone = [], vivi = [], ultimo = {}, pausa = false, prossimo = performance.now() + 1200, scenaTv = null;
@@ -192,6 +198,9 @@ function crea(cont, opz) {
       P: { tutto: q('.tutto'), busto: q('.busto'), testa: q('.testa'), pom: q('.pom'), gS: q('.gS'), gD: q('.gD'), sS: q('.sS'), sD: q('.sD'), bS: q('.bS'), bD: q('.bD'), aS: q('.aS'), aD: q('.aD'), ombra: q('.ombra'), oN: q('.occhiN'), oX: q('.occhiX'), bN: q('.boccaN'), dol: q('.dolore'), stelle: q('.stelle') }
     }, conf || {});
     g.addEventListener('pointerdown', e => premi(e, o));
+    // iPhone: senza questo il browser si prende il dito (scorrimento, menu dell'immagine) e il trascinamento salta
+    g.addEventListener('touchstart', e => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+    g.querySelectorAll('image').forEach(im => im.setAttribute('draggable', 'false'));
     ultimo[p.id] = performance.now();
     vivi.push(o);
     return o;
@@ -246,6 +255,7 @@ function crea(cont, opz) {
     o.vx = (px - prima.x) / Math.max(8, now - prima.t) * 16; presa.ultimo = { x: px, t: now };
     o.x = px - 60 * o.s; o.y = py - 50 * o.s;
   });
+  addEventListener('touchmove', e => { if (presa && e.cancelable) e.preventDefault(); }, { passive: false });
   addEventListener('pointerup', e => rilascia(e));
   addEventListener('pointercancel', e => rilascia(e));
   function rilascia(e) {

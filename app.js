@@ -316,6 +316,9 @@ async function prendiViso(dest, opz) {
 
 // ---------------------------------------------------------------- omini
 let OM = null, ominiChiave = '', ominiCaricati = 0;
+// mentre si scrive (tastiera aperta) gli omini si nascondono, così non coprono i campi
+addEventListener('focusin', () => { if (OM && sb) aggiornaOmini(false); });
+addEventListener('focusout', () => setTimeout(() => { if (OM && sb) aggiornaOmini(false); }, 50));
 function ominoDa(p) {
   const path = p.tipo === 'bimbo' ? p.viso_path : p.foto_path;
   return { id: p.id, faccia: (path && S.urls[path]) || null, voce: p.tipo === 'bimbo' ? 'b' : (p.voce || 'm'), pigiama: p.pigiama || 0, bimbo: p.tipo === 'bimbo' };
@@ -330,7 +333,8 @@ async function aggiornaOmini(forza) {
     terra: () => window.innerHeight - ((document.querySelector('.nav') || {}).offsetHeight || 0) - 2,
     riquadri: () => [...document.querySelectorAll('#app .card')]
   });
-  const pausa = !!S.sheet || S.tab === 'admin' || S.screen === 'loading';
+  const scrive = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && document.activeElement.type !== 'checkbox';
+  const pausa = !!S.sheet || S.tab === 'admin' || S.screen === 'loading' || scrive;
   OM.pausa(pausa);
   const registrato = S.screen === 'main' && S.me;
   const chiave = registrato ? 'veri' : 'finti';

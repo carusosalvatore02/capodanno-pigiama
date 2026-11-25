@@ -1,6 +1,6 @@
 // Service worker: tiene in memoria i file dell'app per aprirla subito.
 // Cambia VERSIONE a ogni aggiornamento dell'app.
-const VERSIONE = 'pigiama-v8';
+const VERSIONE = 'pigiama-v9';
 const FILE = [
   './', './index.html', './app.js', './config.js', './vendor/supabase.js', './vendor/qrcode.js', './tv.html', './tv.js', './omini.js', './viso.js',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'
