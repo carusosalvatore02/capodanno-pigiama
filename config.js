@@ -12,6 +12,13 @@ window.CONFIG = {
   // Nome dell'organizzatore, usato nei testi
   ORGANIZZATORE: 'Salvatore',
 
+    // Suoni degli omini (file MP3 nella cartella "suoni"). Se una lista è vuota l'app usa versi generati.
+  SUONI: {
+    uomo:  { ahia: [], urlo: [] },
+    donna: { ahia: [], urlo: [] },
+    bimbo: { ahia: [], urlo: [] },
+    tonfo: []
+  },
   // Musica di sottofondo dello schermo TV (file MP3 liberi da diritti nella cartella "musica").
   // Esempio: cena: ['musica/jazz-natalizio.mp3', 'musica/swing.mp3']
   MUSICA: {
