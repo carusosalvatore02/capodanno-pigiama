@@ -96,7 +96,7 @@ async function caricaDati() {
     q(sb.from('brani_karaoke').select('*').order('ordine'))
   ]);
   Object.assign(T, { serata, persone, famiglie, cat, pegni, brani });
-  await preparaUrl([...persone.map(p => p.foto_path), ...famiglie.map(f => f.foto_path)]);
+  await preparaUrl([...persone.map(p => p.foto_path), ...persone.map(p => p.viso_path), ...famiglie.map(f => f.foto_path)]);
   await caricaRisultati();
   await caricaSpareggio();
 }
@@ -289,6 +289,42 @@ function disegna() {
   if (T.girando) return;
   $('scena').innerHTML = scena();
   disegnaTimer();
+  scenaOmini();
+}
+
+// ---------------------------------------------------------------- omini sulla TV
+let OM = null, chiaveOmini = '';
+function ominoDa(p) {
+  const path = p.tipo === 'bimbo' ? p.viso_path : p.foto_path;
+  return { id: p.id, faccia: (path && T.urls[path]) || null, voce: p.tipo === 'bimbo' ? 'b' : (p.voce || 'm'), pigiama: p.pigiama || 0, bimbo: p.tipo === 'bimbo' };
+}
+function scenaOmini() {
+  if (!window.Omini) return;
+  if (!OM) OM = window.Omini.crea($('omini'), { modo: 'tv', scala: .55, terra: () => (T.terra == null ? 656 : T.terra) });
+  const f = T.serata.fase, tv = T.serata.tv || {}, s = passoCorrente(), R = T.ris;
+  const conFaccia = T.persone.filter(p => (p.tipo === 'bimbo' ? p.viso_path : p.foto_path));
+  OM.persone(conFaccia.map(ominoDa));
+  const presenti = conFaccia.filter(p => p.presente);
+  let chiave = f, lista = [];
+  T.terra = 656;                               // sopra la fascia con le lucine
+  const sorteggio = (arr, n) => [...arr].sort(() => Math.random() - .5).slice(0, n);
+  if (['iscrizioni', 'attesa', 'pronostici', 'votazioni', 'votazioni_chiuse'].includes(f)) {
+    const base = presenti.length ? presenti : conFaccia;
+    chiave += '|' + base.map(p => p.id).join(',');
+    lista = sorteggio(base, 7).map(p => ({ id: p.id, fa: 'passeggia', scala: .5 }));
+  } else if (s) {
+    chiave += '|' + tv.i + '|' + (T.rivelato ? 1 : 0) + '|' + (T.sp ? T.sp.id : '');
+    const ha = id => conFaccia.some(p => p.id === id);
+    if (s.k === 'bimbo' && ha(s.pid)) { T.terra = 648; lista = [{ id: s.pid, x: 160, fa: 'balla', scala: .8 }, { id: s.pid, x: 1120, fa: 'balla', scala: .8 }]; }
+    else if (s.k === 'bimbiFine') { T.terra = 648; lista = presenti.filter(p => p.tipo === 'bimbo').slice(0, 8).map((p, i, a) => ({ id: p.id, x: 120 + i * (1040 / Math.max(1, a.length - 1 || 1)), fa: 'festa', scala: .5 })); }
+    else if (s.k === 'catFinal' && R) { T.terra = 648; const rc = R.premi.find(x => x.categoria_id === s.c); lista = (rc ? rc.classifica.slice(0, 3) : []).filter(x => ha(x.persona_id)).map((x, i) => ({ id: x.persona_id, x: 90 + i * 110, fa: 'saltella', scala: .42 })); }
+    else if (s.k === 'catWin' && R && T.rivelato) { T.terra = 648; const rc = R.premi.find(x => x.categoria_id === s.c); if (rc && rc.vincitore_id && ha(rc.vincitore_id)) lista = [{ id: rc.vincitore_id, x: 170, fa: 'balla', scala: .75 }, { id: rc.vincitore_id, x: 1110, fa: 'festa', scala: .75 }]; }
+    else if (s.k === 'famWin' && R && T.rivelato && R.famiglie[0]) { T.terra = 648; const m = presenti.filter(p => p.famiglia_id === R.famiglie[0].famiglia_id); lista = m.map((p, i) => ({ id: p.id, x: i % 2 ? 1180 - Math.floor(i / 2) * 120 : 100 + Math.floor(i / 2) * 120, fa: 'balla', scala: .6 })); }
+    else if (s.k === 'fine') { const v = sorteggio(presenti, 10); lista = v.map((p, i) => ({ id: p.id, x: 70 + i * (1140 / Math.max(1, v.length - 1 || 1)), fa: 'balla', scala: .45 })); }
+  }
+  if (chiave === chiaveOmini) return;
+  chiaveOmini = chiave;
+  OM.scena(lista);
 }
 
 // ---------------------------------------------------------------- reazioni ai cambiamenti della regia
@@ -351,7 +387,7 @@ async function suCambioSerata(nuova) {
   const tvP = (prima && prima.tv) || {}, tvN = nuova.tv || {};
   const cambiataFase = !prima || prima.fase !== nuova.fase;
   if (cambiataFase || prima.spareggio_id !== nuova.spareggio_id) {
-    if (cambiataFase) { T.persone = await q(sb.from('persone').select('*').order('creata_il')); await preparaUrl(T.persone.map(p => p.foto_path)); }
+    if (cambiataFase) { T.persone = await q(sb.from('persone').select('*').order('creata_il')); await preparaUrl([...T.persone.map(p => p.foto_path), ...T.persone.map(p => p.viso_path)]); }
     await caricaRisultati(); await caricaSpareggio(); await aggiornaAvanzamento();
     const s = passoCorrente();
     if (!cambiataFase && prima.spareggio_id && !nuova.spareggio_id && s && s.k === 'catWin') rivela();

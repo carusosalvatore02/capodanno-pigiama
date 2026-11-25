@@ -48,7 +48,10 @@ function toast(t) {
   setTimeout(() => d.remove(), 2800);
 }
 function erroreLeggibile(e) {
+  if (e && typeof Event !== 'undefined' && e instanceof Event) e = new Error('FOTO_ILLEGGIBILE');
   const m = (e && (e.message || e.error_description || e.msg)) || String(e || '');
+  if (/FOTO_ILLEGGIBILE/.test(m)) return 'Questa foto non si riesce a leggere. Riprova scattandola di nuovo, oppure scegline un\'altra (JPG o PNG).';
+  if (m === '[object Event]' || m === '[object Object]') return 'Qualcosa è andato storto. Riprova.';
   if (/row-level security/i.test(m)) return 'Operazione non permessa.';
   if (/rate limit|too many/i.test(m)) return 'Troppi tentativi: aspetta un minuto e riprova.';
   if (/invalid login credentials/i.test(m)) return 'Email o PIN sbagliati. Se è la prima volta, scegli "Prima volta".';
@@ -67,25 +70,42 @@ async function q(promessa) {
 }
 
 // ---------------------------------------------------------------- foto
-async function caricaImmagine(file) {
+// Legge la foto in modo robusto: prova più metodi, perché ogni telefono e browser ne supporta di diversi
+async function caricaImmagine(file, max) {
   if (window.createImageBitmap) {
-    try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) { /* fallback sotto */ }
+    const tentativi = [
+      { imageOrientation: 'from-image', resizeWidth: max * 2, resizeQuality: 'high' },
+      { imageOrientation: 'from-image' },
+      undefined
+    ];
+    for (const opz of tentativi) {
+      try { return opz ? await createImageBitmap(file, opz) : await createImageBitmap(file); } catch (e) { /* prossimo tentativo */ }
+    }
   }
   return await new Promise((ok, ko) => {
-    const img = new Image(); img.onload = () => ok(img); img.onerror = ko;
-    img.src = URL.createObjectURL(file);
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => ok(img);
+    img.onerror = () => ko(new Error('FOTO_ILLEGGIBILE'));
+    img.src = url;
   });
 }
 async function riduci(file, max = 1000) {
-  const img = await caricaImmagine(file);
-  const sc = Math.min(1, max / Math.max(img.width, img.height));
-  const cv = document.createElement('canvas');
-  cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
-  cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-  return await new Promise(ok => cv.toBlob(ok, 'image/jpeg', 0.82));
+  try {
+    const img = await caricaImmagine(file, max);
+    const w = img.width || img.naturalWidth, h = img.height || img.naturalHeight;
+    const sc = Math.min(1, max / Math.max(w, h));
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.round(w * sc)); cv.height = Math.max(1, Math.round(h * sc));
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    const blob = await new Promise(ok => cv.toBlob(ok, 'image/jpeg', 0.82));
+    if (blob && blob.size > 0) return blob;
+  } catch (e) { /* sotto: piano B */ }
+  // Piano B: se è già un JPG/PNG non troppo pesante lo carichiamo così com'è
+  if (/^image\/(jpe?g|png|webp)$/i.test(file.type) && file.size < 8 * 1024 * 1024) return file;
+  throw new Error('FOTO_ILLEGGIBILE');
 }
 async function caricaFoto(path, blob) {
-  await q(sb.storage.from('foto').upload(path, blob, { contentType: 'image/jpeg', upsert: true }));
+  await q(sb.storage.from('foto').upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: true }));
   return path;
 }
 async function rimuoviFoto(path) {
@@ -102,7 +122,8 @@ async function preparaUrl(paths) {
 }
 function avatar(p, size) {
   const s = size || 44;
-  const url = p && p.foto_path && S.urls[p.foto_path];
+  const path = p && (p.tipo === 'bimbo' ? (p.viso_path || p.foto_path) : p.foto_path);
+  const url = path && S.urls[path];
   const ini = esc((p ? nomeVisto(p) : '?')[0] || '?');
   return `<span class="av" style="width:${s}px;height:${s}px;font-size:${Math.round(s * .42)}px">${url ? `<img src="${esc(url)}" alt="">` : ini}</span>`;
 }
@@ -145,7 +166,8 @@ async function caricaFamiglia() {
   S.me = await q(sb.from('persone').select('*').eq('user_id', S.session.user.id).single());
   S.fam = await q(sb.from('famiglie').select('*').eq('id', S.me.famiglia_id).single());
   S.members = await q(sb.from('persone').select('*').eq('famiglia_id', S.me.famiglia_id).order('tipo').order('creata_il'));
-  await preparaUrl([S.fam.foto_path, ...S.members.map(m => m.foto_path)]);
+  await preparaUrl([S.fam.foto_path, ...S.members.map(m => m.foto_path), ...S.members.map(m => m.viso_path)]);
+  ominiCaricati = 0;   // al prossimo disegno gli omini prendono le facce aggiornate
 }
 function ascoltaSerata() {
   if (S.channel) return;
@@ -224,7 +246,7 @@ async function esci() {
 
 // ---------------------------------------------------------------- iscrizione
 function nuovoWizard(email) {
-  return { step: 0, nome: '', cognome: '', soprannome: '', foto: null, fotoPrev: null, privacy: false,
+  return { step: 0, nome: '', cognome: '', soprannome: '', foto: null, fotoPrev: null, privacy: false, voce: null, kViso: null, kVisoPrev: null,
            mode: 'crea', famCognome: '', famNick: '', famId: null, famiglie: null,
            kNome: '', kEta: '', kTitolo: '', err: '', busy: false, email };
 }
@@ -233,6 +255,7 @@ async function wizAvanti() {
   if (w.step === 0) {
     if (!w.nome.trim() || !w.cognome.trim()) w.err = 'Nome e cognome sono obbligatori.';
     else if (!w.foto) w.err = 'Aggiungi una foto del viso: serve a riconoscerti nelle votazioni.';
+    else if (!w.voce) w.err = 'Scegli la voce del tuo omino.';
     else if (!w.privacy) w.err = 'Per continuare spunta "Ho letto e accetto".';
     if (w.err) return render();
     if (!w.famCognome) w.famCognome = w.cognome.trim();
@@ -253,7 +276,7 @@ async function wizAvanti() {
       const pid = uuid();
       await q(sb.from('persone').insert({
         id: pid, famiglia_id: famId, tipo: 'adulto', user_id: uid,
-        nome: w.nome.trim(), cognome: w.cognome.trim(), soprannome: w.soprannome.trim() || null
+        nome: w.nome.trim(), cognome: w.cognome.trim(), soprannome: w.soprannome.trim() || null, voce: w.voce
       }));
       const path = await caricaFoto(`${famId}/${pid}-${Date.now()}.jpg`, w.foto);
       await q(sb.from('persone').update({ foto_path: path }).eq('id', pid));
@@ -276,21 +299,81 @@ async function caricaFamiglieDisponibili() {
   render();
 }
 
+// ---------------------------------------------------------------- viso nell'ovale
+async function prendiViso(dest, opz) {
+  const titoli = { wiz: 'Il tuo viso', me: 'Il tuo viso', wizkid: 'Il viso del bimbo', sheetkid: 'Il viso del bimbo' };
+  if (window.Omini && OM) OM.pausa(true);
+  let blob = null;
+  try { blob = await window.Viso.apri(Object.assign({ titolo: titoli[dest] || 'Il viso' }, opz)); }
+  finally { if (OM) OM.pausa(false); aggiornaOmini(true); }
+  if (!blob) return;
+  const prev = URL.createObjectURL(blob);
+  if (dest === 'wiz') { S.wiz.foto = blob; S.wiz.fotoPrev = prev; S.wiz.err = ''; }
+  if (dest === 'wizkid') { S.wiz.kViso = blob; S.wiz.kVisoPrev = prev; }
+  if (dest === 'me' && S.sheet) { S.sheet.foto = blob; S.sheet.fotoPrev = prev; }
+  if (dest === 'sheetkid' && S.sheet) { S.sheet.viso = blob; S.sheet.visoPrev = prev; }
+}
+
+// ---------------------------------------------------------------- omini
+let OM = null, ominiChiave = '', ominiCaricati = 0;
+function ominoDa(p) {
+  const path = p.tipo === 'bimbo' ? p.viso_path : p.foto_path;
+  return { id: p.id, faccia: (path && S.urls[path]) || null, voce: p.tipo === 'bimbo' ? 'b' : (p.voce || 'm'), pigiama: p.pigiama || 0, bimbo: p.tipo === 'bimbo' };
+}
+function ominiFinti(n) {
+  return Array.from({ length: Math.max(1, Math.min(n, 30)) }, (_, i) => ({ id: 'finto-' + i, faccia: null, voce: i % 2 ? 'f' : 'm', pigiama: (i * 3) % 8, bimbo: i % 5 === 4 }));
+}
+async function aggiornaOmini(forza) {
+  if (!window.Omini) return;
+  if (!OM) OM = window.Omini.crea(document.getElementById('omini'), {
+    modo: 'app', max: 2, scala: .46,
+    terra: () => window.innerHeight - ((document.querySelector('.nav') || {}).offsetHeight || 0) - 2,
+    riquadri: () => [...document.querySelectorAll('#app .card')]
+  });
+  const pausa = !!S.sheet || S.tab === 'admin' || S.screen === 'loading';
+  OM.pausa(pausa);
+  const registrato = S.screen === 'main' && S.me;
+  const chiave = registrato ? 'veri' : 'finti';
+  if (!forza && chiave === ominiChiave && Date.now() - ominiCaricati < 60000) return;
+  ominiChiave = chiave; ominiCaricati = Date.now();
+  try {
+    if (registrato) {
+      const tutti = await q(sb.from('persone').select('id,tipo,foto_path,viso_path,voce,pigiama'));
+      await preparaUrl([...tutti.map(p => p.foto_path), ...tutti.map(p => p.viso_path)]);
+      const conFoto = tutti.map(ominoDa).filter(o => o.faccia);
+      OM.persone(conFoto.length ? conFoto : ominiFinti(1));
+    } else {
+      let n = 1;
+      try { n = await q(sb.rpc('conteggio_omini')); } catch (e) { n = 1; }
+      OM.persone(ominiFinti(n || 1));
+    }
+  } catch (e) { console.warn('omini', e); }
+}
+
 // ---------------------------------------------------------------- figli
-async function salvaFiglio(dati, id) {
+async function salvaFiglio(dati, id, viso) {
   const nome = (dati.nome || '').trim(), titolo = (dati.titolo || '').trim();
   const eta = parseInt(dati.eta, 10);
+  if (!id && !viso) throw new Error('Aggiungi la foto del viso del bimbo: servirà per il suo omino.');
   if (!nome) throw new Error('Scrivi il nome del bimbo.');
   if (isNaN(eta) || eta < 0 || eta > 17) throw new Error('L\'età deve essere tra 0 e 17 anni.');
   if (!titolo) throw new Error('Scegli o scrivi un titolo buffo.');
+  const kid = id || uuid();
   if (id) await q(sb.from('persone').update({ nome, eta, titolo_buffo: titolo }).eq('id', id));
-  else await q(sb.from('persone').insert({ id: uuid(), famiglia_id: S.me.famiglia_id, tipo: 'bimbo', nome, eta, titolo_buffo: titolo }));
+  else await q(sb.from('persone').insert({ id: kid, famiglia_id: S.me.famiglia_id, tipo: 'bimbo', nome, eta, titolo_buffo: titolo }));
+  if (viso) {
+    const vecchio = (S.members.find(m => m.id === kid) || {}).viso_path;
+    const path = await caricaFoto(`${S.me.famiglia_id}/${kid}-viso-${Date.now()}.jpg`, viso);
+    await q(sb.from('persone').update({ viso_path: path }).eq('id', kid));
+    if (vecchio) await rimuoviFoto(vecchio);
+  }
   await caricaFamiglia();
 }
 async function eliminaFiglio(id) {
   const k = S.members.find(m => m.id === id);
   await q(sb.from('persone').delete().eq('id', id));
   if (k && k.foto_path) await rimuoviFoto(k.foto_path);
+  if (k && k.viso_path) await rimuoviFoto(k.viso_path);
   await caricaFamiglia();
 }
 
@@ -344,6 +427,7 @@ function render() {
   const chiave = S.screen + '|' + S.tab + '|' + (S.wiz ? S.wiz.step : '') + '|' + (S.adm ? S.adm.sez : '');
   if (chiave === render.ultima) app.querySelectorAll('.body.in').forEach(e => e.classList.remove('in'));
   render.ultima = chiave;
+  if (sb) aggiornaOmini(false);
   if (attivo) { const el = document.getElementById(attivo); if (el && el.tagName === 'INPUT') { el.focus(); try { const v = el.value; el.value = ''; el.value = v; } catch (e) { /* number */ } } }
 }
 
@@ -388,13 +472,14 @@ function vistaWizard() {
     <div class="photo-pick">
       <div class="big">${w.fotoPrev ? `<img src="${w.fotoPrev}" alt="La tua foto">` : 'La tua<br>foto'}</div>
       <div class="col grow">
-        <label class="btn ghost filebtn">Scatta un selfie<input type="file" accept="image/*" capture="user" data-file="wizfoto"></label>
-        <label class="btn ghost filebtn">Scegli dalla galleria<input type="file" accept="image/*" data-file="wizfoto"></label>
+        <button class="btn ghost" data-a="visocam" data-v="wiz">Scatta un selfie</button>
+        <label class="btn ghost filebtn">Scegli dalla galleria<input type="file" accept="image/*" data-file="visogal" data-dest="wiz"></label>
       </div>
     </div>
     <div class="field"><label for="w-nome">Nome</label><input id="w-nome" type="text" data-k="nome" autocomplete="given-name" value="${esc(w.nome)}"></div>
     <div class="field"><label for="w-cognome">Cognome</label><input id="w-cognome" type="text" data-k="cognome" autocomplete="family-name" value="${esc(w.cognome)}"></div>
     <div class="field"><label for="w-sopr">Soprannome (facoltativo)</label><input id="w-sopr" type="text" data-k="soprannome" value="${esc(w.soprannome)}" placeholder="es. Zio Pino"><span class="tiny mute">Se c'è, compare al posto del nome nelle votazioni e in classifica.</span></div>
+    ${sceltaVoce(w.voce)}
     ${privacyBox(w.privacy)}`;
   if (w.step === 1) {
     if (w.mode === 'unisci' && w.famiglie === null) { w.famiglie = 'loading'; setTimeout(caricaFamiglieDisponibili, 0); }
@@ -415,7 +500,7 @@ function vistaWizard() {
     b = `<h2>I tuoi figli</h2>
     <p class="small mute">Aggiungi i tuoi bimbi. Se il partner li ha già inseriti li trovi qui sotto. Niente figli? Vai avanti.</p>
     ${figli.map(k => `<div class="card row"><div class="grow"><b>${esc(k.nome)}</b><div class="tiny mute">${k.eta} anni · ${esc(k.titolo_buffo)}</div></div><button class="chip" data-a="kedit" data-v="${k.id}">Modifica</button></div>`).join('')}
-    ${formFiglio('k', w.kNome, w.kEta, w.kTitolo)}
+    ${formFiglio('k', w.kNome, w.kEta, w.kTitolo, w.kVisoPrev)}
     <button class="btn ghost full" data-a="kadd" ${w.busy ? 'disabled' : ''}>+ Aggiungi questo bimbo</button>`;
   }
   if (w.step === 3) {
@@ -442,9 +527,19 @@ function privacyBox(on) {
   return `<div class="card col"><h3>Le tue foto sono al sicuro</h3>${PRIVACY.map(t => `<p class="small mute">${esc(t)}</p>`).join('')}
     <label class="check ${on ? 'on' : ''}"><input type="checkbox" data-a="privacy" ${on ? 'checked' : ''}><span><b>Ho letto e accetto</b></span></label></div>`;
 }
-function formFiglio(pre, nome, eta, titolo) {
+function sceltaVoce(v) {
+  return `<div class="field"><label>Voce del tuo omino</label><div class="seg"><button class="${v === 'm' ? 'on' : ''}" data-a="voce" data-v="m">Maschile</button><button class="${v === 'f' ? 'on' : ''}" data-a="voce" data-v="f">Femminile</button></div>
+    <span class="tiny mute">Nell'app gira un omino in pigiama con la tua faccia: se lo tocchi o lo lanci, urla con questa voce.</span></div>`;
+}
+function fotoFiglio(pre, prev, url) {
+  const img = prev || url;
+  return `<div class="photo-pick"><div class="big" style="width:76px;height:76px">${img ? `<img src="${esc(img)}" alt="">` : 'Viso<br>del bimbo'}</div>
+    <div class="col grow"><button class="btn ghost" data-a="visocam" data-v="${pre === 's' ? 'sheetkid' : 'wizkid'}">Scatta</button><label class="btn ghost filebtn">Dalla galleria<input type="file" accept="image/*" data-file="visogal" data-dest="${pre === 's' ? 'sheetkid' : 'wizkid'}"></label></div></div>`;
+}
+function formFiglio(pre, nome, eta, titolo, prev, url) {
   const K = pre === 's' ? { n: 'nome', e: 'eta', t: 'titolo' } : { n: 'kNome', e: 'kEta', t: 'kTitolo' };
   return `<div class="card col">
+    ${fotoFiglio(pre, prev, url)}
     <div class="field"><label for="${pre}-nome">Nome del bimbo</label><input id="${pre}-nome" type="text" data-k="${K.n}" value="${esc(nome)}"></div>
     <div class="field"><label for="${pre}-eta">Età (anni)</label><input id="${pre}-eta" type="number" inputmode="numeric" min="0" max="17" data-k="${K.e}" value="${esc(eta)}"></div>
     <div class="field"><label for="${pre}-tit">Titolo buffo</label><input id="${pre}-tit" type="text" data-k="${K.t}" value="${esc(titolo)}" placeholder="es. Re dei Ghiri"></div>
@@ -537,13 +632,14 @@ function vistaRegole() {
 function vistaSheet() {
   const s = S.sheet;
   let b = '';
-  if (s.tipo === 'figlio') b = `<h2>${s.id ? 'Modifica bimbo' : 'Nuovo bimbo'}</h2>${formFiglio('s', s.nome, s.eta, s.titolo)}
+  if (s.tipo === 'figlio') b = `<h2>${s.id ? 'Modifica bimbo' : 'Nuovo bimbo'}</h2>${formFiglio('s', s.nome, s.eta, s.titolo, s.visoPrev, s.visoUrl)}
     ${s.err ? `<div class="err" role="alert">${esc(s.err)}</div>` : ''}
     <button class="btn full" data-a="ssalvafiglio" ${s.busy ? 'disabled' : ''}>Salva</button>
     ${s.id ? `<button class="btn danger full" data-a="seliminafiglio" ${s.busy ? 'disabled' : ''}>${s.conferma ? 'Tocca di nuovo per eliminare' : 'Elimina'}</button>` : ''}`;
   if (s.tipo === 'me') b = `<h2>Il tuo profilo</h2>
     <div class="photo-pick"><div class="big">${s.fotoPrev ? `<img src="${s.fotoPrev}" alt="">` : (S.me.foto_path && S.urls[S.me.foto_path] ? `<img src="${esc(S.urls[S.me.foto_path])}" alt="">` : 'Foto')}</div>
-      <div class="col grow"><label class="btn ghost filebtn">Scatta un selfie<input type="file" accept="image/*" capture="user" data-file="mefoto"></label><label class="btn ghost filebtn">Dalla galleria<input type="file" accept="image/*" data-file="mefoto"></label></div></div>
+      <div class="col grow"><button class="btn ghost" data-a="visocam" data-v="me">Scatta un selfie</button><label class="btn ghost filebtn">Dalla galleria<input type="file" accept="image/*" data-file="visogal" data-dest="me"></label></div></div>
+    ${sceltaVoce(s.voce)}
     <div class="field"><label for="s-nome">Nome</label><input id="s-nome" type="text" data-k="nome" value="${esc(s.nome)}"></div>
     <div class="field"><label for="s-cognome">Cognome</label><input id="s-cognome" type="text" data-k="cognome" value="${esc(s.cognome)}"></div>
     <div class="field"><label for="s-sopr">Soprannome (facoltativo)</label><input id="s-sopr" type="text" data-k="soprannome" value="${esc(s.soprannome)}"></div>
@@ -574,7 +670,7 @@ async function caricaFase() {
   ]);
   S.g.tutti = tutti; S.g.famiglie = famiglie;
   const io = tutti.find(p => p.id === S.me.id); if (io) S.me = io;
-  await preparaUrl([...tutti.map(p => p.foto_path), ...famiglie.map(x => x.foto_path)]);
+  await preparaUrl([...tutti.map(p => p.foto_path), ...tutti.map(p => p.viso_path), ...famiglie.map(x => x.foto_path)]);
   if (f === 'pronostici') await caricaPronostici();
   if (f === 'votazioni' || f === 'votazioni_chiuse') await caricaVoti();
   if (f === 'fine') { try { S.g.ris = await q(sb.rpc('risultati')); } catch (e) { S.g.ris = null; } }
@@ -940,7 +1036,8 @@ function sheetAdmin(s) {
     ${bimbo ? `<div class="field"><label for="ap-eta">Età</label><input id="ap-eta" type="number" inputmode="numeric" data-k="eta" value="${esc(s.eta)}"></div>
       <div class="field"><label for="ap-tit">Titolo buffo</label><input id="ap-tit" type="text" data-k="titolo" value="${esc(s.titolo)}"></div>`
     : `<div class="field"><label for="ap-cog">Cognome</label><input id="ap-cog" type="text" data-k="cognome" value="${esc(s.cognome)}"></div>
-      <div class="field"><label for="ap-sop">Soprannome</label><input id="ap-sop" type="text" data-k="soprannome" value="${esc(s.soprannome)}"></div>`}
+      <div class="field"><label for="ap-sop">Soprannome</label><input id="ap-sop" type="text" data-k="soprannome" value="${esc(s.soprannome)}"></div>
+      ${sceltaVoce(s.voce)}`}
     <div class="field"><label for="ap-fam">Famiglia</label><select id="ap-fam" data-k="famiglia_id" style="padding:13px;border-radius:12px;background:var(--bg2);border:1px solid var(--line);min-height:50px">${S.adm.famiglie.map(f => `<option value="${f.id}" ${f.id === s.famiglia_id ? 'selected' : ''}>${esc(nomeFamiglia(f))}</option>`).join('')}</select></div>
     ${s.err ? `<div class="err" role="alert">${esc(s.err)}</div>` : ''}
     <button class="btn full" data-a="adsalvapersona" ${s.busy ? 'disabled' : ''}>Salva</button>
@@ -1169,7 +1266,7 @@ async function azioneAdmin(a, v, el) {
     }
     case 'adedit': {
       const p = personaDi(v);
-      S.sheet = { tipo: 'adpersona', id: p.id, ptipo: p.tipo, nome: p.nome, cognome: p.cognome || '', soprannome: p.soprannome || '', eta: p.eta == null ? '' : String(p.eta), titolo: p.titolo_buffo || '', famiglia_id: p.famiglia_id, isMe: p.id === S.me.id, haAccount: !!p.user_id, err: '' };
+      S.sheet = { tipo: 'adpersona', id: p.id, ptipo: p.tipo, nome: p.nome, cognome: p.cognome || '', soprannome: p.soprannome || '', eta: p.eta == null ? '' : String(p.eta), titolo: p.titolo_buffo || '', famiglia_id: p.famiglia_id, isMe: p.id === S.me.id, haAccount: !!p.user_id, voce: p.voce || null, err: '' };
       return true;
     }
     case 'adnew': S.sheet = { tipo: 'adpersona', id: null, ptipo: el.dataset.t, nome: '', cognome: famDi(v).cognome, soprannome: '', eta: '', titolo: '', famiglia_id: v, err: '' }; return true;
@@ -1182,7 +1279,7 @@ async function azioneAdmin(a, v, el) {
         if (isNaN(campi.eta) || campi.eta < 0 || campi.eta > 17) { s.err = 'Età tra 0 e 17 anni.'; return true; }
         if (!campi.titolo_buffo) { s.err = 'Il titolo buffo è obbligatorio.'; return true; }
       } else {
-        campi.cognome = s.cognome.trim(); campi.soprannome = s.soprannome.trim() || null;
+        campi.cognome = s.cognome.trim(); campi.soprannome = s.soprannome.trim() || null; campi.voce = s.voce || null;
         if (!campi.cognome) { s.err = 'Il cognome è obbligatorio.'; return true; }
       }
       s.busy = true; render();
@@ -1294,6 +1391,7 @@ document.addEventListener('change', async e => {
   const tipo = t.dataset.file;
   if (!tipo || !t.files || !t.files[0]) return;
   const file = t.files[0];
+  if (tipo === 'visogal') { t.value = ''; await prendiViso(t.dataset.dest, { file }); render(); return; }
   try {
     if (tipo === 'wizfoto') {
       const blob = await riduci(file, 900);
@@ -1354,22 +1452,24 @@ document.addEventListener('click', async e => {
       case 'kadd': {
         const w = S.wiz; w.busy = true; w.err = ''; render();
         try {
-          await salvaFiglio({ nome: w.kNome, eta: w.kEta, titolo: w.kTitolo });
-          w.kNome = ''; w.kEta = ''; w.kTitolo = '';
+          await salvaFiglio({ nome: w.kNome, eta: w.kEta, titolo: w.kTitolo }, null, w.kViso);
+          w.kNome = ''; w.kEta = ''; w.kTitolo = ''; w.kViso = null; w.kVisoPrev = null;
           toast('Bimbo aggiunto');
         } catch (err) { w.err = erroreLeggibile(err); }
         w.busy = false; break;
       }
 
       case 'knew': S.sheet = { tipo: 'figlio', id: null, nome: '', eta: '', titolo: '', err: '' }; break;
+      case 'voce': (S.sheet || S.wiz).voce = v; break;
+      case 'visocam': await prendiViso(v, { modo: 'camera' }); break;
       case 'kedit': {
         const k = S.members.find(m => m.id === v);
-        S.sheet = { tipo: 'figlio', id: k.id, nome: k.nome, eta: String(k.eta), titolo: k.titolo_buffo, err: '' };
+        S.sheet = { tipo: 'figlio', id: k.id, nome: k.nome, eta: String(k.eta), titolo: k.titolo_buffo, err: '', visoUrl: k.viso_path && S.urls[k.viso_path] };
         break;
       }
       case 'ssalvafiglio': {
         const s = S.sheet; s.busy = true; s.err = ''; render();
-        try { await salvaFiglio(s, s.id); S.sheet = null; toast('Salvato'); }
+        try { await salvaFiglio(s, s.id, s.viso); S.sheet = null; toast('Salvato'); }
         catch (err) { s.err = erroreLeggibile(err); s.busy = false; }
         break;
       }
@@ -1381,13 +1481,13 @@ document.addEventListener('click', async e => {
         catch (err) { s.err = erroreLeggibile(err); s.busy = false; }
         break;
       }
-      case 'meedit': S.sheet = { tipo: 'me', nome: S.me.nome, cognome: S.me.cognome || '', soprannome: S.me.soprannome || '', err: '' }; break;
+      case 'meedit': S.sheet = { tipo: 'me', nome: S.me.nome, cognome: S.me.cognome || '', soprannome: S.me.soprannome || '', voce: S.me.voce || null, err: '' }; break;
       case 'ssalvame': {
         const s = S.sheet;
         if (!s.nome.trim() || !s.cognome.trim()) { s.err = 'Nome e cognome sono obbligatori.'; break; }
         s.busy = true; render();
         try {
-          await q(sb.from('persone').update({ nome: s.nome.trim(), cognome: s.cognome.trim(), soprannome: s.soprannome.trim() || null }).eq('id', S.me.id));
+          await q(sb.from('persone').update({ nome: s.nome.trim(), cognome: s.cognome.trim(), soprannome: s.soprannome.trim() || null, voce: s.voce || null }).eq('id', S.me.id));
           if (s.foto) await cambiaMiaFoto(s.foto); else await caricaFamiglia();
           S.sheet = null; toast('Profilo aggiornato');
         } catch (err) { s.err = erroreLeggibile(err); s.busy = false; }

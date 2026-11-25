@@ -63,13 +63,14 @@ input.txt{padding:13px 14px;border-radius:12px;border:1px solid var(--line);back
 </style>
 </head>
 <body>
-<div id="viewport"><div id="stage"><div id="scena"></div><div id="cd"></div></div></div>
+<div id="viewport"><div id="stage"><div id="scena"></div><div id="omini" style="position:absolute;inset:0;pointer-events:none;z-index:15"></div><div id="cd"></div></div></div>
 <canvas id="confetti"></canvas>
 <div id="start"></div>
 <audio id="musica" preload="auto"></audio>
 <script src="vendor/supabase.js"></script>
 <script src="vendor/qrcode.js"></script>
 <script src="config.js"></script>
+<script src="omini.js"></script>
 <script src="tv.js"></script>
 </body>
 </html>

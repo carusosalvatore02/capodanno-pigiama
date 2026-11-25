@@ -1,8 +1,8 @@
 // Service worker: tiene in memoria i file dell'app per aprirla subito.
 // Cambia VERSIONE a ogni aggiornamento dell'app.
-const VERSIONE = 'pigiama-v6';
+const VERSIONE = 'pigiama-v8';
 const FILE = [
-  './', './index.html', './app.js', './config.js', './vendor/supabase.js', './vendor/qrcode.js', './tv.html', './tv.js',
+  './', './index.html', './app.js', './config.js', './vendor/supabase.js', './vendor/qrcode.js', './tv.html', './tv.js', './omini.js', './viso.js',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'
 ];
 
@@ -23,7 +23,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request.url, { cache: 'no-cache' })   // chiede sempre al server se c'è una versione nuova
       .then(r => {
         const copia = r.clone();
         caches.open(VERSIONE).then(c => c.put(e.request, copia));
