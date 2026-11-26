@@ -78,7 +78,7 @@ function suonaFile(k, vol, maxSec) {
 }
 const suoni = {
   tamburi(sec) { if (!suonaFile('rullo', .9, sec + 1)) sintetici.tamburi(sec); },
-  fanfara() { if (!suonaFile('fanfara')) sintetici.fanfara(); },
+  fanfara() { /* tolta: stonava con la musica di sottofondo */ },
   applausi() { if (!suonaFile('applausi', .8)) sintetici.applausi(); },
   ding() { if (!suonaFile('ding', .7)) sintetici.ding(); },
   tic() { if (!suonaFile('tic', .5)) sintetici.tic(); },
