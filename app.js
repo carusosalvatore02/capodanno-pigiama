@@ -739,6 +739,7 @@ async function salva(fn, annulla) {
 }
 async function scegliPronostico(cat, pid) {
   if (S.g.jolly === cat) return;
+  if (Object.entries(S.g.pron).some(([k, x]) => +k !== cat && x === pid)) return;   // già scelto per un altro premio
   const prima = S.g.pron[cat]; S.g.pron[cat] = pid; render();
   await salva(() => q(sb.from('pronostici').upsert({ votante_id: S.me.id, categoria_id: cat, persona_id: pid }, { onConflict: 'votante_id,categoria_id' })),
     () => { S.g.pron[cat] = prima; });
@@ -759,11 +760,15 @@ async function cambiaJolly(cat) {
     return;
   }
   const vecchia = S.g.jolly;
+  // se avevi pronosticato te stesso in un altro premio, quel pronostico si toglie: una persona vale un solo premio
+  const doppio = Object.entries(S.g.pron).find(([k, x]) => +k !== cat && +k !== vecchia && x === S.me.id);
   S.g.jolly = cat; S.g.pron[cat] = S.me.id;
   if (vecchia) delete S.g.pron[vecchia];
+  if (doppio) delete S.g.pron[doppio[0]];
   render();
   await salva(async () => {
     if (vecchia) await q(sb.from('pronostici').delete().eq('votante_id', S.me.id).eq('categoria_id', vecchia));
+    if (doppio) await q(sb.from('pronostici').delete().eq('votante_id', S.me.id).eq('categoria_id', +doppio[0]));
     await q(sb.from('jolly').upsert({ votante_id: S.me.id, categoria_id: cat }, { onConflict: 'votante_id' }));
     await q(sb.from('pronostici').upsert({ votante_id: S.me.id, categoria_id: cat, persona_id: S.me.id }, { onConflict: 'votante_id,categoria_id' }));
   }, () => { S.g.jolly = prima.jolly; S.g.pron = prima.pron; });
@@ -771,25 +776,23 @@ async function cambiaJolly(cat) {
 }
 async function daiStelle(pid, n) {
   const prima = S.g.pag[pid];
-  if (prima && prima.conf) return;
   if (prima && prima.s === n) {
     delete S.g.pag[pid]; render();
     await salva(() => q(sb.from('pagelle').delete().eq('votante_id', S.me.id).eq('persona_id', pid)), () => { S.g.pag[pid] = prima; });
     return;
   }
-  S.g.pag[pid] = { s: n, conf: false }; render();
+  S.g.pag[pid] = { s: n, conf: !!(prima && prima.conf) }; render();
   await salva(() => q(sb.from('pagelle').upsert({ votante_id: S.me.id, persona_id: pid, stelle: n }, { onConflict: 'votante_id,persona_id' })),
     () => { if (prima) S.g.pag[pid] = prima; else delete S.g.pag[pid]; });
 }
 async function votaPremio(cat, pid) {
   const prima = S.g.vp[cat];
-  if (prima && prima.conf) return;
   if (prima && prima.pid === pid) {
     delete S.g.vp[cat]; render();
     await salva(() => q(sb.from('voti_premi').delete().eq('votante_id', S.me.id).eq('categoria_id', cat)), () => { S.g.vp[cat] = prima; });
     return;
   }
-  S.g.vp[cat] = { pid, conf: false }; render();
+  S.g.vp[cat] = { pid, conf: !!(prima && prima.conf) }; render();
   await salva(() => q(sb.from('voti_premi').upsert({ votante_id: S.me.id, categoria_id: cat, persona_id: pid }, { onConflict: 'votante_id,categoria_id' })),
     () => { if (prima) S.g.vp[cat] = prima; else delete S.g.vp[cat]; });
 }
@@ -839,10 +842,14 @@ function vistaPronostici() {
       return `<div class="card"><div class="row" style="margin-bottom:10px"><b class="grow">${esc(c.nome)}</b>
         ${!S.me.senza_pigiama ? `<button class="chip ${mio ? 'on' : ''}" data-a="gjolly" data-v="${c.id}" ${j && !mio ? 'disabled style="opacity:.35"' : ''}>${mio ? 'Jolly giocato' : 'Vinco io!'}</button>` : ''}</div>
         ${mio ? `<p class="tiny mute" style="margin-bottom:8px">Hai puntato su te stesso. Tocca "Jolly giocato" per annullare.</p>` : ''}
-        <div class="pchips">${g.map(p => chipPersona(p, S.g.pron[c.id] === p.id, `data-a="gpron" data-c="${c.id}" data-v="${p.id}"`, mio && p.id !== S.me.id)).join('')}</div></div>`;
+        <div class="pchips">${g.map(p => {
+          const altrove = Object.entries(S.g.pron).find(([k, x]) => +k !== c.id && x === p.id);
+          const nota = altrove ? 'già scelto per ' + ((cats.find(k => k.id === +altrove[0]) || {}).nome || '') : '';
+          return chipPersona(p, S.g.pron[c.id] === p.id, `data-a="gpron" data-c="${c.id}" data-v="${p.id}"`, (mio && p.id !== S.me.id) || !!altrove, nota);
+        }).join('')}</div></div>`;
     }).join('')}
     <div class="card"><b>Premio famiglia</b><div class="pchips" style="margin-top:10px">${S.g.famiglie.filter(x => S.g.tutti.some(p => p.famiglia_id === x.id && p.presente)).map(x => `<button class="pchip ${S.g.pronFam === x.id ? 'on' : ''}" data-a="gpronfam" data-v="${x.id}" style="padding-left:14px"><span>${esc(x.nickname)}<small>Famiglia ${esc(x.cognome)}</small></span></button>`).join('')}</div></div>
-    <p class="tiny mute">Ogni scelta si salva da sola. Puoi cambiare idea finché ${esc(C.ORGANIZZATORE || 'l\'organizzatore')} non chiude i pronostici.</p>`;
+    <p class="tiny mute">Ogni persona può essere scelta per un solo premio. Ogni scelta si salva da sola: puoi cambiare idea finché ${esc(C.ORGANIZZATORE || 'l\'organizzatore')} non chiude i pronostici.</p>`;
 }
 function vistaVotazioni() {
   const pag = S.g.pag, vp = S.g.vp, cats = S.categorie;
@@ -859,7 +866,7 @@ function vistaVotazioni() {
       return `<div class="card"><b>${esc(nomeFamiglia(x))}</b>${m.map(p => {
         const v = pag[p.id];
         return `<div class="member" style="flex-wrap:wrap">${avatarGara(p, 46)}<div class="grow"><b>${esc(nomeVisto(p))}</b><div class="tiny mute">${p.tipo === 'bimbo' ? esc(p.titolo_buffo) : 'Adulto'}</div></div>${v && v.conf ? '<span class="tag">Confermato</span>' : ''}
-          <div class="stars" style="flex-basis:100%">${[1, 2, 3, 4, 5].map(n => `<button class="star ${v && v.s >= n ? 'on' : ''}" data-a="gstella" data-p="${p.id}" data-v="${n}" ${v && v.conf ? 'disabled' : ''} aria-label="${n} stelle a ${esc(nomeVisto(p))}">★</button>`).join('')}</div></div>`;
+          <div class="stars" style="flex-basis:100%">${[1, 2, 3, 4, 5].map(n => `<button class="star ${v && v.s >= n ? 'on' : ''}" data-a="gstella" data-p="${p.id}" data-v="${n}" aria-label="${n} stelle a ${esc(nomeVisto(p))}">★</button>`).join('')}</div></div>`;
       }).join('')}</div>`;
     }).join('')}`;
   } else {
@@ -871,17 +878,17 @@ function vistaVotazioni() {
         <div class="pchips">${g.map(p => {
           const altrove = Object.entries(vp).find(([k, x]) => +k !== c.id && x.pid === p.id);
           const nota = altrove ? 'già votato per ' + ((cats.find(k => k.id === +altrove[0]) || {}).nome || '') : '';
-          return chipPersona(p, !!(v && v.pid === p.id), `data-a="gvp" data-c="${c.id}" data-v="${p.id}"`, !!altrove || (v && v.conf), nota);
+          return chipPersona(p, !!(v && v.pid === p.id), `data-a="gvp" data-c="${c.id}" data-v="${p.id}"`, !!altrove, nota);
         }).join('')}</div></div>`;
     }).join('')}`;
   }
   return `<div class="seg"><button class="${S.g.vtab === 'pagelle' ? 'on' : ''}" data-a="gvtab" data-v="pagelle">Pagelle · ${npag}</button><button class="${S.g.vtab === 'premi' ? 'on' : ''}" data-a="gvtab" data-v="premi">Premi · ${nvp}/${cats.length}</button></div>
     ${corpo}
     <div class="card col" style="position:sticky;bottom:64px;background:var(--bg2)">
-      ${tuttiConf ? `<div class="row"><span class="grow"><b>Tutti i voti sono confermati</b><div class="tiny mute">Puoi ancora aggiungere pagelle, se vuoi.</div></span></div>`
+      ${tuttiConf ? `<div class="row"><span class="grow"><b>Tutti i voti sono confermati</b><div class="tiny mute">Puoi ancora cambiarli o aggiungere pagelle finché le votazioni sono aperte.</div></span></div>`
         : `<div class="small">${daConf ? `<b>${daConf}</b> ${daConf === 1 ? 'voto da confermare' : 'voti da confermare'}` : 'Nessun voto nuovo da confermare'}${nvp < cats.length ? ` · mancano <b>${cats.length - nvp}</b> premi` : ''}</div>`}
       <button class="btn full" data-a="gconferma" ${daConf ? '' : 'disabled'}>Conferma voto</button>
-      <p class="tiny mute">Dopo la conferma quei voti non si possono più cambiare. Il resto puoi completarlo dopo.</p>
+      <p class="tiny mute">Anche dopo la conferma puoi cambiare i voti finché le votazioni sono aperte: ogni modifica si salva da sola.</p>
     </div>`;
 }
 function vistaSpareggio() {
@@ -904,9 +911,7 @@ function vistaFine() {
     <div class="card"><h3>Vincitori</h3>${R.premi.map(c => { const p = c.vincitore_id ? pers(c.vincitore_id) : null; return `<div class="member">${p ? avatar(p, 40) : ''}<div class="grow"><div class="tiny mute">${esc(c.nome)}</div><b>${p ? esc(nomeVisto(p)) + ' ' + esc(p.cognome || '') : 'Nessun vincitore'}</b></div></div>`; }).join('')}
       ${R.famiglia_vincitrice ? `<div class="member"><div class="grow"><div class="tiny mute">Miglior famiglia</div><b>${esc(nomeFamiglia(fam(R.famiglia_vincitrice)))}</b></div></div>` : ''}</div>
     <div class="card" style="overflow-x:auto"><h3>Classifica adulti</h3><table class="tab"><tr><th>#</th><th>Nome</th><th class="n">Pig.</th><th class="n">Pron.</th><th class="n">Jolly</th><th class="n">Tot.</th></tr>
-      ${R.adulti.map((a, i) => `<tr style="${a.persona_id === S.me.id ? 'color:var(--acc)' : ''}"><td>${i + 1}</td><td>${esc(nomeVisto(pers(a.persona_id)))}</td><td class="n">${a.pigiama}</td><td class="n">${segno(a.pronostico)}</td><td class="n">${segno(a.jolly)}</td><td class="n"><b>${a.totale}</b></td></tr>`).join('')}</table></div>
-    <div class="card"><h3>Classifica famiglie</h3><table class="tab"><tr><th>#</th><th>Famiglia</th><th class="n">Media</th></tr>
-      ${R.famiglie.map((x, i) => `<tr style="${x.famiglia_id === S.me.famiglia_id ? 'color:var(--acc)' : ''}"><td>${i + 1}</td><td>${esc((fam(x.famiglia_id) || {}).nickname || '')}</td><td class="n">${Number(x.media).toFixed(2).replace('.', ',')}</td></tr>`).join('')}</table></div>`;
+      ${R.adulti.map((a, i) => `<tr style="${a.persona_id === S.me.id ? 'color:var(--acc)' : ''}"><td>${i + 1}</td><td>${esc(nomeVisto(pers(a.persona_id)))}</td><td class="n">${a.pigiama}</td><td class="n">${segno(a.pronostico)}</td><td class="n">${segno(a.jolly)}</td><td class="n"><b>${a.totale}</b></td></tr>`).join('')}</table></div>`;
 }
 
 async function azioneSerata(a, v, el) {
@@ -1114,7 +1119,7 @@ function costruisciPassi() {
   const bimbi = P.filter(p => p.tipo === 'bimbo' && p.presente).sort((a, b) => a.eta - b.eta || a.nome.localeCompare(b.nome));
   if (bimbi.length) { st.push({ k: 'bimbiIntro' }); bimbi.forEach(p => st.push({ k: 'bimbo', pid: p.id })); st.push({ k: 'bimbiFine' }); }
   S.adm.cat.forEach(c => { st.push({ k: 'catTitle', c: c.id }); st.push({ k: 'catFinal', c: c.id }); st.push({ k: 'catWin', c: c.id }); });
-  st.push({ k: 'famFinal' }, { k: 'famWin' }, { k: 'clAd' }, { k: 'clFam' }, { k: 'fine' });
+  st.push({ k: 'famFinal' }, { k: 'famWin' }, { k: 'clAd' }, { k: 'fine' });
   return st;
 }
 function etichettaPasso(s) {

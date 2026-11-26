@@ -36,9 +36,12 @@ window.CONFIG = {
 
   // Musica di sottofondo dello schermo TV (file MP3 nella cartella "musica").
   // Per più brani: cena: ['musica/cena.mp3', 'musica/cena-2.mp3']
+  // Se pegni o finale mancano, la TV usa rispettivamente la musica di cena e quella di festa.
   MUSICA: {
     cena:        ['musica/cena.mp3'],         // arrivi, pronostici, votazioni
-    premiazione: ['musica/premiazione.mp3'],  // durante la premiazione
+    pegni:       ['musica/pegni.mp3'],        // premiazione: pegni e bimbi (allegra, si ride)
+    premiazione: ['musica/premiazione.mp3'],  // premiazione: i 4 premi (suspense)
+    finale:      ['musica/finale.mp3'],       // premiazione: famiglie e classifica
     festa:       ['musica/festa.mp3']         // dopo mezzanotte e a fine serata
   }
 };

@@ -148,13 +148,23 @@ function musicaVol() { const m = (T.serata && T.serata.tv && T.serata.tv.musica)
 function gruppoMusica() {
   const f = T.serata.fase;
   if (T.festa || f === 'fine') return 'festa';
-  if (f === 'premiazione') return 'premiazione';
+  if (f === 'premiazione') {
+    const s = passoCorrente(), k = s && s.k;
+    if (['catTitle', 'catFinal', 'catWin'].includes(k)) return 'premiazione';    // i 4 premi: suspense
+    if (['famFinal', 'famWin', 'clAd', 'clFam', 'fine'].includes(k)) return 'finale';  // famiglie e classifica
+    return 'pegni';                                                               // pegni e bimbi: si ride
+  }
   return 'cena';
+}
+// lista dei brani del momento; se manca, usa quella del momento più simile
+function listaMusica(g) {
+  const L = C.MUSICA || {}, riserva = { pegni: 'cena', finale: 'festa' };
+  return (L[g] && L[g].length) ? L[g] : (L[riserva[g]] || []);
 }
 function aggiornaMusica() {
   const el = $('musica'), cfg = (T.serata.tv && T.serata.tv.musica) || {}, liste = C.MUSICA || {};
   if (!T.avviato) return;
-  const gruppo = gruppoMusica(), lista = liste[gruppo] || [];
+  const gruppo = gruppoMusica(), lista = listaMusica(gruppo);
   if (cfg.on === false || !lista.length) { el.pause(); return; }
   el.volume = musicaVol();
   if (cfg.next && cfg.next !== T.ultimoNext) { T.ultimoNext = cfg.next; T.braniIdx++; el.src = lista[T.braniIdx % lista.length]; el.play().catch(() => {}); return; }
@@ -162,7 +172,7 @@ function aggiornaMusica() {
   if (el.paused) el.play().catch(() => {});
 }
 $('musica').addEventListener('ended', () => {
-  const lista = (C.MUSICA || {})[gruppoMusica()] || []; if (!lista.length) return;
+  const lista = listaMusica(gruppoMusica()); if (!lista.length) return;
   T.braniIdx++; $('musica').src = lista[T.braniIdx % lista.length]; $('musica').play().catch(() => {});
 });
 
@@ -290,7 +300,9 @@ function vistaSpareggio(cat) {
 }
 function vistaPegno(s, tv) {
   const p = pers(s.pid), chiave = s.pid + '-' + s.g, pid = (tv.draws || {})[chiave];
-  const pg = pid && !T.girando ? T.pegni.find(x => x.id === pid) : null;
+  // il pegno si vede solo quando la ruota si è fermata (o se il giro è vecchio: TV riaperta dopo)
+  const inGiro = T.girando || (tv.spin && tv.spin.key === chiave && T.spinFinito !== tv.spin.at && Date.now() - tv.spin.at < 9000);
+  const pg = pid && !inGiro ? T.pegni.find(x => x.id === pid) : null;
   const karaoke = pg && pg.supporto === 'karaoke';
   const brano = karaoke && tv.karaoke ? T.brani.find(b => b.id === tv.karaoke) : null;
   return `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:space-around;padding:40px">
@@ -324,7 +336,7 @@ function scena() {
   if (f === 'votazioni_chiuse') return `<div class="c"><div class="t in">Votazioni <span class="acc">chiuse</span></div><div class="s in2" style="margin-top:24px">Tra poco la premiazione…</div></div>${luci()}`;
   return vistaPremiazione();
 }
-function chiaveScena() { const tv = T.serata.tv || {}; return T.serata.fase + '|' + (tv.i == null ? '' : tv.i) + '|' + (T.rivelato ? 1 : 0) + '|' + (T.sp ? T.sp.id : ''); }
+function chiaveScena() { const tv = T.serata.tv || {}; return T.serata.fase + '|' + (tv.i == null ? '' : tv.i) + '|' + (T.rivelato ? 1 : 0) + '|' + (T.sp ? T.sp.id : '') + '|' + (T.girando ? 'g' : '') + (T.spinFinito || ''); }
 function disegna() {
   if (T.girando) return;
   // ridisegna solo se qualcosa è cambiato: altrimenti le animazioni d'ingresso ripartono di continuo
@@ -346,7 +358,7 @@ function ominoDa(p) {
   return { id: p.id, faccia: (path && T.urls[path]) || null, voce: p.tipo === 'bimbo' ? 'b' : (p.voce || 'm'), pigiama: p.pigiama || 0, bimbo: p.tipo === 'bimbo' };
 }
 function scenaOmini() {
-  if (!window.Omini) return;
+  if (!window.Omini || T.auguri) return;
   if (!OM) OM = window.Omini.crea($('omini'), { modo: 'tv', scala: .55, terra: () => (T.terra == null ? 656 : T.terra) });
   const f = T.serata.fase, tv = T.serata.tv || {}, s = passoCorrente(), R = T.ris;
   const conFaccia = T.persone.filter(p => (p.tipo === 'bimbo' ? p.viso_path : p.foto_path));
@@ -407,7 +419,7 @@ function giraRuota(spin) {
     g.style.transition = 'transform 4.2s cubic-bezier(.12,.6,.1,1)'; g.style.transform = `rotate(${T.ruota}deg)`;
   });
   let k = 0; const iv = setInterval(() => { suoni.tic(); if (++k > 30) clearInterval(iv); }, 140);
-  setTimeout(() => { T.girando = false; suoni.ding(); coriandoli(60); disegna(); }, 4300);
+  setTimeout(() => { T.girando = false; T.spinFinito = spin.at; suoni.ding(); coriandoli(60); disegna(); }, 4300);
 }
 function avviaTimer(t) {
   fermaTimer();
@@ -441,7 +453,7 @@ async function suCambioSerata(nuova) {
   }
   const passoP = tvP.steps ? tvP.i : -1, passoN = tvN.steps ? tvN.i : -1;
   const cambioPasso = passoP !== passoN || JSON.stringify(tvP.steps) !== JSON.stringify(tvN.steps);
-  if (cambioPasso) { if (!T.ris && ['premiazione', 'fine'].includes(nuova.fase)) await caricaRisultati(); entraPasso(); }
+  if (cambioPasso) { if (!T.ris && ['premiazione', 'fine'].includes(nuova.fase)) await caricaRisultati(); entraPasso(); aggiornaMusica(); }
   if (tvN.spin && (!tvP.spin || tvN.spin.at !== tvP.spin.at) && !cambioPasso) { disegna(); giraRuota(tvN.spin); }
   else if (!T.girando) disegna();
   if (tvN.timer && (!tvP.timer || tvN.timer.id !== tvP.timer.id)) avviaTimer(tvN.timer);
@@ -470,24 +482,69 @@ function mezzanotte() {
   const rinvio = ((T.serata && T.serata.tv && T.serata.tv.countdown) || {}).rinvio || 0;
   return m.getTime() + rinvio * 60000;
 }
+// Auguri dopo mezzanotte: "Buon 2027!" una volta sola, poi gli auguri a turno di ogni ospite,
+// tutti gli omini che ballano e fuochi d'artificio. Dura 3 minuti (45 secondi nella prova).
+const AUGURI = [
+  'Che il 2027 ti porti pigiami sempre più comodi', 'Dodici mesi di pisolini senza sveglia', 'Che il divano sia sempre libero per te',
+  'Colazione a letto almeno una volta al mese', 'Calzini sempre in coppia, tutto l\'anno', 'Un anno morbido come le tue pantofole',
+  'Che le coperte non ti abbandonino mai', 'Sogni belli e risvegli lenti', 'Meno sveglie, più cuscini',
+  'Un anno pieno di risate (e di panettone avanzato)', 'Abbracci caldi come la flanella', 'Che ogni lunedì ti sembri una domenica'
+];
+const AUGURI_BIMBI = ['Un anno pieno di giochi e di coccole', 'Tanti pigiama party e zero compiti', 'Che i mostri sotto il letto restino in vacanza', 'Un anno di storie della buonanotte'];
+function iniziaAuguri(el, anno) {
+  T.auguri = { coda: [], iv: null, fuochi: null, t0: Date.now() };
+  $('stage').classList.add('auguri');
+  el.innerHTML = `<div class="aug"><div class="t pop acc aug-t">Buon ${anno}!</div><div id="augcard"></div></div>${luci()}`;
+  setTimeout(prossimoAugurio, 2600);
+  T.auguri.iv = setInterval(prossimoAugurio, 6500);
+  T.auguri.fuochi = setInterval(() => { if (Date.now() - T.auguri.t0 < 60000 || Math.random() < .4) fuochi(); }, 6000);
+  // tutti gli omini a ballare
+  if (OM) {
+    const con = T.persone.filter(p => p.presente && (p.tipo === 'bimbo' ? p.viso_path : p.foto_path));
+    const v = [...con].sort(() => Math.random() - .5).slice(0, 12);
+    chiaveOmini = 'auguri';
+    OM.scena(v.map((p, i) => ({ id: p.id, x: 70 + i * (1140 / Math.max(1, v.length - 1 || 1)), fa: i % 3 ? 'balla' : 'festa', scala: .42 })));
+  }
+}
+function prossimoAugurio() {
+  const A = T.auguri, box = $('augcard'); if (!A || !box) return;
+  if (!A.coda.length) A.coda = T.persone.filter(p => p.presente).sort(() => Math.random() - .5);
+  const p = A.coda.shift(); if (!p) return;
+  const lista = p.tipo === 'bimbo' ? AUGURI_BIMBI : AUGURI;
+  const frase = lista[Math.floor(Math.random() * lista.length)];
+  box.innerHTML = `<div class="augc in">${av(p, 170)}<div style="text-align:left"><div class="f" style="font-size:46px">Auguri da ${esc(nome(p))}!</div><div class="s" style="font-size:32px;margin-top:8px;max-width:680px">${esc(frase)}</div></div></div>`;
+}
+function fineAuguri() {
+  if (!T.auguri) return;
+  clearInterval(T.auguri.iv); clearInterval(T.auguri.fuochi); T.auguri = null;
+  $('stage').classList.remove('auguri');
+  chiaveOmini = ''; scenaOmini();
+}
 function tickCountdown() {
   const el = $('cd'); let target, inizio;
   if (T.cdStart) { target = T.cdStart + 10000; inizio = T.cdStart; }
   else { target = mezzanotte(); inizio = target - 5 * 60000; }
+  const durata = T.cdStart ? 45000 : 180000;
   const ora = Date.now(), resta = Math.ceil((target - ora) / 1000);
-  const attivo = ora >= inizio && ora < target + 120000;
-  if (!attivo) { if (el.style.display !== 'none') { el.style.display = 'none'; if (T.cdStart && ora >= target + 120000) T.cdStart = null; } return; }
+  const attivo = ora >= inizio && ora < target + durata;
+  if (!attivo) {
+    if (el.style.display !== 'none') { el.style.display = 'none'; el.dataset.modo = ''; fineAuguri(); if (T.cdStart && ora >= target + durata) T.cdStart = null; }
+    return;
+  }
   el.style.display = 'flex';
   const anno = new Date(C.DATA_FESTA || '2026-12-31T20:00:00+01:00').getFullYear() + 1;
+  // ogni parte si disegna una volta sola; poi cambia solo il numero
   if (resta > 10) {
-    const mm = Math.floor(resta / 60), ss = String(resta % 60).padStart(2, '0');
-    el.innerHTML = `<div class="s">Mezzanotte tra</div><div class="t acc" style="font-size:240px">${mm}:${ss}</div>${luci()}`;
+    if (el.dataset.modo !== 'attesa') { el.dataset.modo = 'attesa'; el.innerHTML = `<div class="s">Mezzanotte tra</div><div class="t acc" id="cdnum" style="font-size:240px;font-variant-numeric:tabular-nums"></div>${luci()}`; }
+    const mm = Math.floor(resta / 60), ss = String(resta % 60).padStart(2, '0'), txt = `${mm}:${ss}`;
+    const n = $('cdnum'); if (n && n.textContent !== txt) n.textContent = txt;
   } else if (resta > 0) {
-    if (T.ultimoNum !== resta) { T.ultimoNum = resta; suoni.bip(); }
-    el.innerHTML = `<div class="t pop acc" style="font-size:360px">${resta}</div>`;
-  } else {
-    if (T.ultimoBoom !== target) { T.ultimoBoom = target; suoni.fanfara(); suoni.applausi(); suoni.botti(); fuochi(); setTimeout(fuochi, 4000); if (!T.cdStart) { T.festa = true; aggiornaMusica(); } }
-    el.innerHTML = `<div class="t pop acc" style="font-size:170px">Buon ${anno}!</div><div class="s in2" style="margin-top:24px">Auguri a tutti!</div>${luci()}`;
+    if (el.dataset.modo !== 'conta') { el.dataset.modo = 'conta'; el.innerHTML = '<div id="cdnum"></div>'; }
+    if (T.ultimoNum !== resta) { T.ultimoNum = resta; suoni.bip(); $('cdnum').outerHTML = `<div id="cdnum" class="t pop acc" style="font-size:360px">${resta}</div>`; }
+  } else if (el.dataset.modo !== 'auguri') {
+    el.dataset.modo = 'auguri';
+    if (T.ultimoBoom !== target) { T.ultimoBoom = target; suoni.fanfara(); suoni.applausi(); suoni.botti(); fuochi(); if (!T.cdStart) { T.festa = true; aggiornaMusica(); } }
+    iniziaAuguri(el, anno);
   }
 }
 
