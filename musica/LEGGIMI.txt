@@ -1,4 +1,7 @@
 MUSICA DI SOTTOFONDO DELLA TV (MP3 in questa cartella, nomi in config.js blocco MUSICA)
-  cena:         jazz/swing natalizio tranquillo  (cerca su pixabay.com/music: christmas jazz, christmas swing)
-  premiazione:  suspense da quiz show            (cerca: game show, quiz suspense)
-  festa:        musica da ballo allegra          (cerca: party dance, new year celebration)
+  cena.mp3         arrivi, pronostici, votazioni: jazz/swing natalizio tranquillo (christmas jazz, christmas swing)
+  pegni.mp3        premiazione, pegni e bimbi: allegra e buffa (funny, comedy, happy ukulele)
+  premiazione.mp3  premiazione, i 4 premi: suspense da quiz show (game show suspense)
+  finale.mp3       premio famiglia e classifica: trionfale (victory, celebration, epic win)
+  festa.mp3        dopo mezzanotte: musica da ballo (party dance, new year celebration)
+Cercale su pixabay.com/music (gratis, senza citare l'autore).
