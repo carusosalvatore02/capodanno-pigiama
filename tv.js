@@ -156,7 +156,8 @@ function gruppoMusica() {
   if (f === 'premiazione') {
     const s = passoCorrente(), k = s && s.k;
     if (['catTitle', 'catFinal', 'catWin'].includes(k)) return 'premiazione';    // i 4 premi: suspense
-    if (['famFinal', 'famWin', 'clAd', 'clFam', 'fine'].includes(k)) return 'finale';  // famiglie e classifica
+    if (k === 'fine') return 'festa';                                              // slide degli auguri: si balla
+    if (['famFinal', 'famWin', 'clAd', 'clFam'].includes(k)) return 'finale';      // famiglie e classifica
     return 'pegni';                                                               // pegni e bimbi: si ride
   }
   return 'cena';
