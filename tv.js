@@ -177,6 +177,7 @@ const SP_URI = location.origin + location.pathname;
 try { SP.refresh = JSON.parse(localStorage.getItem('pigiama-spotify') || '{}').refresh || null; } catch (e) { /* niente */ }
 const spotifyAttivo = () => !!(SPC.clientId && SP.pronto && SP.device);
 function spUri(x) { if (!x) return null; const m = String(x).match(/(playlist|album)[/:]([A-Za-z0-9]+)/); return m ? `spotify:${m[1]}:${m[2]}` : x; }
+const idDi = u => { const m = String(u || '').match(/(playlist|album)[/:]([A-Za-z0-9]+)/); return m ? m[2] : u || null; };
 function spPlaylist(g) { const L = SPC.playlist || {}, riserva = { pegni: 'cena', finale: 'festa' }; return spUri(L[g] || L[riserva[g]]); }
 function b64url(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
 async function spCollega() {
@@ -229,6 +230,12 @@ function spPrepara() {   // carica il lettore Spotify nella pagina
       if (T.avviato) avvisoSpotify('Spotify collegato: la musica arriva dalle tue playlist');
     });
     SP.player.addListener('not_ready', () => { SP.pronto = false; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(); });
+    SP.player.addListener('player_state_changed', s => {
+      SP.contesto = s && s.context && s.context.uri || null;
+      // se Spotify sta suonando una playlist diversa da quella del momento, la corregge
+      const giusta = T.avviato && spPlaylist(gruppoMusica());
+      if (giusta && SP.contesto && idDi(SP.contesto) !== idDi(giusta) && SP.inCorso !== giusta && !(T.serata.tv && T.serata.tv.musica && T.serata.tv.musica.on === false)) musicaSpotify(gruppoMusica(), (T.serata.tv && T.serata.tv.musica) || {});
+    });
     SP.player.addListener('playback_error', e => avvisoSpotify('Spotify: ' + (e && e.message)));
     ['initialization_error', 'authentication_error', 'account_error'].forEach(ev => SP.player.addListener(ev, e => {
       avvisoSpotify('Spotify non disponibile: ' + (e && e.message) + ' · uso gli MP3');
@@ -257,16 +264,20 @@ function aggiornaStatoSpotify(err) {
 }
 function musicaSpotify(gruppo, cfg) {
   const uri = spPlaylist(gruppo);
-  if (cfg.on === false || !uri) { SP.player.pause(); T.musicaGruppo = gruppo; return; }
+  T.musicaGruppo = gruppo;
+  if (cfg.on === false || !uri) { SP.player.pause(); return; }
   SP.player.setVolume(musicaVol());
   if (cfg.next && cfg.next !== T.ultimoNext) { T.ultimoNext = cfg.next; SP.player.nextTrack(); return; }
-  if (gruppo !== T.musicaGruppo) {
-    T.musicaGruppo = gruppo;
-    const suona = () => spApi('PUT', '/me/player/play?device_id=' + SP.device, { context_uri: uri });
-    suona().catch(() => new Promise(r => setTimeout(r, 1500)).then(suona))
-      .then(() => spApi('PUT', '/me/player/shuffle?state=true&device_id=' + SP.device).catch(() => {}))
-      .catch(e => { console.warn(e.message); avvisoSpotify('La playlist "' + gruppo + '" non parte (' + e.message + '): uso gli MP3'); SP.pronto = false; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(e.message); });
-  } else SP.player.resume();
+  // se sta già suonando la playlist giusta riprende, altrimenti la fa partire
+  // (così non riparte mai la playlist rimasta da una sessione precedente)
+  if (idDi(SP.contesto) === idDi(uri)) { SP.player.resume(); return; }
+  if (SP.inCorso === uri) return;
+  SP.inCorso = uri;
+  const suona = () => spApi('PUT', '/me/player/play?device_id=' + SP.device, { context_uri: uri });
+  suona().catch(() => new Promise(r => setTimeout(r, 1500)).then(suona))
+    .then(() => { SP.contesto = uri; spApi('PUT', '/me/player/shuffle?state=true&device_id=' + SP.device).catch(() => {}); })
+    .catch(e => { SP.player.pause(); avvisoSpotify('La playlist "' + gruppo + '" non parte (' + e.message + '): uso gli MP3'); SP.pronto = false; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(e.message); })
+    .finally(() => { if (SP.inCorso === uri) SP.inCorso = null; });
 }
 
 function aggiornaMusica() {
