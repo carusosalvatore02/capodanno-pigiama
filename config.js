@@ -40,11 +40,11 @@ window.CONFIG = {
   SPOTIFY: {
     clientId: 'da8373ee38014f3fb16e75af5d0a45a8',
     playlist: {
-      cena:        '',
-      pegni:       '',
-      premiazione: '',
-      finale:      '',
-      festa:       ''
+      cena:        'https://open.spotify.com/playlist/2OxJrcgA6AQGk1sSQ8ZZ2a',
+      pegni:       'https://open.spotify.com/playlist/48I6rPdTiVm3fyPRUUaa4f',
+      premiazione: 'https://open.spotify.com/playlist/2V7ZRCHDQ11JvNZF4Ghxzc',
+      finale:      'https://open.spotify.com/playlist/5uoSkNuNNoDJNDutYwilb5',
+      festa:       'https://open.spotify.com/playlist/4XZRMPE0wRltzv2U16Y3C4'
     }
   },
 
