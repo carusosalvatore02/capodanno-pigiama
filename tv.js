@@ -37,7 +37,7 @@ function rumore(t0, d, vol, hp) {
   s.connect(f).connect(g).connect(a.destination); s.start(a.currentTime + t0);
 }
 function abbassaMusica(sec) {
-  if (typeof spotifyAttivo === 'function' && spotifyAttivo() && spPlaylist(gruppoMusica())) {
+  if (typeof spotifyAttivo === 'function' && spotifyAttivo()) {
     const v = musicaVol(); SP.player.setVolume(v * .2);
     clearTimeout(abbassaMusica.ts); abbassaMusica.ts = setTimeout(() => { SP.player.setVolume(musicaVol()); }, sec * 1000);
     return;
@@ -249,9 +249,7 @@ function musicaSpotify(gruppo, cfg) {
 function aggiornaMusica() {
   const el = $('musica'), cfg = (T.serata.tv && T.serata.tv.musica) || {}, liste = C.MUSICA || {};
   if (!T.avviato) return;
-  // Spotify se c'è una playlist per questo momento, altrimenti gli MP3
-  if (spotifyAttivo() && spPlaylist(gruppoMusica())) { el.pause(); musicaSpotify(gruppoMusica(), cfg); return; }
-  if (spotifyAttivo() && T.musicaGruppo !== gruppoMusica()) { SP.player.pause(); T.musicaGruppo = null; }
+  if (spotifyAttivo()) { el.pause(); musicaSpotify(gruppoMusica(), cfg); return; }
   const gruppo = gruppoMusica(), lista = listaMusica(gruppo);
   if (cfg.on === false || !lista.length) { el.pause(); return; }
   el.volume = musicaVol();
@@ -260,7 +258,7 @@ function aggiornaMusica() {
   if (el.paused) el.play().catch(() => {});
 }
 $('musica').addEventListener('ended', () => {
-  if (spotifyAttivo() && spPlaylist(gruppoMusica())) return;
+  if (spotifyAttivo()) return;
   const lista = listaMusica(gruppoMusica()); if (!lista.length) return;
   T.braniIdx++; $('musica').src = lista[T.braniIdx % lista.length]; $('musica').play().catch(() => {});
 });

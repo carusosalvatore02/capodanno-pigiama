@@ -38,7 +38,7 @@ window.CONFIG = {
   // se Spotify non è collegato o non va, la TV usa gli MP3 qui sotto.
   // Per ogni momento incolla il link della playlist (Spotify › Condividi › Copia link della playlist).
   SPOTIFY: {
-    clientId: 'da8373ee38014f3fb16e75af5d0a45a8',
+    clientId: '',
     playlist: {
       cena:        '',
       pegni:       '',
