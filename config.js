@@ -34,6 +34,20 @@ window.CONFIG = {
     botti:    ['suoni/tv/botti.mp3']      // fuochi d'artificio a mezzanotte
   },
 
+  // Spotify sulla TV (facoltativo, serve Premium). Se è compilato, la musica arriva da queste playlist;
+  // se Spotify non è collegato o non va, la TV usa gli MP3 qui sotto.
+  // Per ogni momento incolla il link della playlist (Spotify › Condividi › Copia link della playlist).
+  SPOTIFY: {
+    clientId: 'da8373ee38014f3fb16e75af5d0a45a8',
+    playlist: {
+      cena:        '',
+      pegni:       '',
+      premiazione: '',
+      finale:      '',
+      festa:       ''
+    }
+  },
+
   // Musica di sottofondo dello schermo TV (file MP3 nella cartella "musica").
   // Per più brani: cena: ['musica/cena.mp3', 'musica/cena-2.mp3']
   // Se pegni o finale mancano, la TV usa rispettivamente la musica di cena e quella di festa.

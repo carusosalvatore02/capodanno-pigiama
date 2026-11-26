@@ -37,6 +37,11 @@ function rumore(t0, d, vol, hp) {
   s.connect(f).connect(g).connect(a.destination); s.start(a.currentTime + t0);
 }
 function abbassaMusica(sec) {
+  if (typeof spotifyAttivo === 'function' && spotifyAttivo() && spPlaylist(gruppoMusica())) {
+    const v = musicaVol(); SP.player.setVolume(v * .2);
+    clearTimeout(abbassaMusica.ts); abbassaMusica.ts = setTimeout(() => { SP.player.setVolume(musicaVol()); }, sec * 1000);
+    return;
+  }
   const m = $('musica'); if (!m || m.paused) return;
   const v = musicaVol(); m.volume = v * .2;
   clearTimeout(abbassaMusica.t); abbassaMusica.t = setTimeout(() => { m.volume = v; }, sec * 1000);
@@ -161,9 +166,92 @@ function listaMusica(g) {
   const L = C.MUSICA || {}, riserva = { pegni: 'cena', finale: 'festa' };
   return (L[g] && L[g].length) ? L[g] : (L[riserva[g]] || []);
 }
+
+// ---------------------------------------------------------------- Spotify (facoltativo)
+// Con config.js → SPOTIFY.clientId e le playlist, la TV diventa un lettore Spotify (serve Premium)
+// e cambia playlist da sola a ogni momento. Se Spotify non c'è o si scollega, usa gli MP3.
+const SPC = C.SPOTIFY || {};
+const SP = { token: null, scad: 0, refresh: null, player: null, device: null, pronto: false };
+const SP_URI = location.origin + location.pathname;
+try { SP.refresh = JSON.parse(localStorage.getItem('pigiama-spotify') || '{}').refresh || null; } catch (e) { /* niente */ }
+const spotifyAttivo = () => !!(SPC.clientId && SP.pronto && SP.device);
+function spUri(x) { if (!x) return null; const m = String(x).match(/(playlist|album)[/:]([A-Za-z0-9]+)/); return m ? `spotify:${m[1]}:${m[2]}` : x; }
+function spPlaylist(g) { const L = SPC.playlist || {}, riserva = { pegni: 'cena', finale: 'festa' }; return spUri(L[g] || L[riserva[g]]); }
+function b64url(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+async function spCollega() {
+  const v = b64url(crypto.getRandomValues(new Uint8Array(48)));
+  localStorage.setItem('pigiama-spotify-v', v);
+  const sfida = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v)));
+  const p = new URLSearchParams({ response_type: 'code', client_id: SPC.clientId, redirect_uri: SP_URI, code_challenge_method: 'S256', code_challenge: sfida,
+    scope: 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state' });
+  location.href = 'https://accounts.spotify.com/authorize?' + p;
+}
+function spSalva(j) {
+  SP.token = j.access_token; SP.scad = Date.now() + ((j.expires_in || 3600) - 60) * 1000;
+  if (j.refresh_token) SP.refresh = j.refresh_token;
+  localStorage.setItem('pigiama-spotify', JSON.stringify({ refresh: SP.refresh }));
+}
+async function spChiedi(corpo) {
+  const r = await fetch('https://accounts.spotify.com/api/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: SPC.clientId, ...corpo }) });
+  const j = await r.json(); if (!r.ok) throw new Error(j.error_description || j.error || 'Spotify'); spSalva(j);
+}
+async function spToken() {
+  if (SP.token && Date.now() < SP.scad) return SP.token;
+  if (!SP.refresh) return null;
+  try { await spChiedi({ grant_type: 'refresh_token', refresh_token: SP.refresh }); return SP.token; }
+  catch (e) { console.warn('Spotify:', e.message); SP.refresh = null; localStorage.removeItem('pigiama-spotify'); return null; }
+}
+async function spRitorno() {   // rientro dalla pagina di Spotify con ?code=...
+  const q = new URLSearchParams(location.search), code = q.get('code');
+  if (!code && !q.get('error')) return;
+  history.replaceState(null, '', SP_URI);
+  if (!code) return;
+  try { await spChiedi({ grant_type: 'authorization_code', code, redirect_uri: SP_URI, code_verifier: localStorage.getItem('pigiama-spotify-v') || '' }); }
+  catch (e) { console.warn('Spotify:', e.message); }
+}
+async function spApi(metodo, percorso, corpo) {
+  const tk = await spToken(); if (!tk) throw new Error('Spotify non collegato');
+  const r = await fetch('https://api.spotify.com/v1' + percorso, { method: metodo, headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' }, body: corpo ? JSON.stringify(corpo) : undefined });
+  if (!r.ok && r.status !== 204) throw new Error('Spotify ' + r.status);
+}
+function spPrepara() {   // carica il lettore Spotify nella pagina
+  if (!SPC.clientId || !SP.refresh || SP.player) return;
+  window.onSpotifyWebPlaybackSDKReady = () => {
+    SP.player = new Spotify.Player({ name: 'Capodanno in Pigiama · TV', getOAuthToken: cb => spToken().then(t => cb(t)), volume: musicaVol() });
+    SP.player.addListener('ready', ({ device_id }) => { SP.device = device_id; SP.pronto = true; T.musicaGruppo = null; $('musica').pause(); aggiornaMusica(); aggiornaStatoSpotify(); });
+    SP.player.addListener('not_ready', () => { SP.pronto = false; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(); });
+    ['initialization_error', 'authentication_error', 'account_error'].forEach(ev => SP.player.addListener(ev, e => {
+      console.warn('Spotify', ev, e && e.message); SP.pronto = false; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(e && e.message);
+    }));
+    SP.player.connect();
+  };
+  const s = document.createElement('script'); s.src = 'https://sdk.scdn.co/spotify-player.js'; document.head.appendChild(s);
+}
+function aggiornaStatoSpotify(err) {
+  const el = $('spstato'); if (!el) return;
+  el.innerHTML = !SPC.clientId ? '' : spotifyAttivo() ? '<span class="acc">Spotify collegato</span> · la musica arriva dalle tue playlist'
+    : SP.refresh ? (err ? `Spotify non disponibile (${esc(err)}): uso gli MP3` : 'Collegamento a Spotify…') : '<button class="btn ghost" id="spcollega">Collega Spotify</button>';
+  const b = $('spcollega'); if (b) b.onclick = spCollega;
+}
+function musicaSpotify(gruppo, cfg) {
+  const uri = spPlaylist(gruppo);
+  if (cfg.on === false || !uri) { SP.player.pause(); T.musicaGruppo = gruppo; return; }
+  SP.player.setVolume(musicaVol());
+  if (cfg.next && cfg.next !== T.ultimoNext) { T.ultimoNext = cfg.next; SP.player.nextTrack(); return; }
+  if (gruppo !== T.musicaGruppo) {
+    T.musicaGruppo = gruppo;
+    spApi('PUT', '/me/player/play?device_id=' + SP.device, { context_uri: uri })
+      .then(() => spApi('PUT', '/me/player/shuffle?state=true&device_id=' + SP.device).catch(() => {}))
+      .catch(e => { console.warn(e.message); SP.pronto = false; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(e.message); });
+  } else SP.player.resume();
+}
+
 function aggiornaMusica() {
   const el = $('musica'), cfg = (T.serata.tv && T.serata.tv.musica) || {}, liste = C.MUSICA || {};
   if (!T.avviato) return;
+  // Spotify se c'è una playlist per questo momento, altrimenti gli MP3
+  if (spotifyAttivo() && spPlaylist(gruppoMusica())) { el.pause(); musicaSpotify(gruppoMusica(), cfg); return; }
+  if (spotifyAttivo() && T.musicaGruppo !== gruppoMusica()) { SP.player.pause(); T.musicaGruppo = null; }
   const gruppo = gruppoMusica(), lista = listaMusica(gruppo);
   if (cfg.on === false || !lista.length) { el.pause(); return; }
   el.volume = musicaVol();
@@ -172,6 +260,7 @@ function aggiornaMusica() {
   if (el.paused) el.play().catch(() => {});
 }
 $('musica').addEventListener('ended', () => {
+  if (spotifyAttivo() && spPlaylist(gruppoMusica())) return;
   const lista = listaMusica(gruppoMusica()); if (!lista.length) return;
   T.braniIdx++; $('musica').src = lista[T.braniIdx % lista.length]; $('musica').play().catch(() => {});
 });
@@ -559,10 +648,12 @@ addEventListener('resize', adatta);
 function schermataAvvio(msg) {
   $('start').style.display = 'flex';
   $('start').innerHTML = `<div style="width:130px;height:130px">${LUNA}</div><div class="t" style="font-size:56px">Capodanno <span class="acc">in Pigiama</span></div><div class="s" style="font-size:24px">Schermo TV</div>
-    ${msg || ''}<button class="btn" id="avvia">Avvia schermo TV</button>
+    ${msg || ''}<button class="btn" id="avvia">Avvia schermo TV</button><div id="spstato" class="s" style="font-size:18px"></div>
     <p class="s" style="font-size:16px;max-width:560px">Il tocco serve a sbloccare suoni e musica. Poi lo schermo va da solo: si comanda tutto dal telefono, nella scheda Regia.</p>`;
+  aggiornaStatoSpotify(); spPrepara();
   $('avvia').onclick = async () => {
     ac(); suoni.ding();
+    if (SP.player && SP.player.activateElement) SP.player.activateElement();   // il browser vuole un tocco per far suonare Spotify
     try { await document.documentElement.requestFullscreen(); } catch (e) { /* facoltativo */ }
     try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) { /* facoltativo */ }
     $('start').style.display = 'none'; T.avviato = true; caricaSuoniTv(); aggiornaMusica(); disegna();
@@ -588,6 +679,7 @@ function schermataAccesso(err) {
 async function avvia() {
   adatta();
   if (!C.SUPABASE_URL || C.SUPABASE_URL.includes('XXXX')) { $('start').style.display = 'flex'; $('start').innerHTML = '<div class="t" style="font-size:40px">Compila config.js</div>'; return; }
+  await spRitorno();   // se si rientra da Spotify, salva il collegamento
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return schermataAccesso('');
   try { await caricaDati(); await aggiornaAvanzamento(); }
