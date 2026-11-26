@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Capodanno in Pigiama</title>
 <meta name="theme-color" content="#1B2346">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -86,7 +86,7 @@ input:focus{outline:2px solid var(--acc);outline-offset:1px}
 .tag{display:inline-block;padding:3px 9px;border-radius:999px;background:var(--card);border:1px solid var(--line);font-size:12px;font-weight:800}
 .reminder{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);color:var(--pink);font-weight:700;font-size:14px}
 .reminder:last-child{border-bottom:0}
-.overlay{position:fixed;inset:0;background:rgba(8,11,30,.72);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.overlay{position:fixed;inset:0;background:rgba(8,11,30,.72);z-index:50;animation:velo 260ms var(--ease-out) both;display:flex;align-items:flex-end;justify-content:center}
 .sheet{width:100%;max-width:520px;max-height:92dvh;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:22px 22px 0 0;padding:20px 18px calc(20px + var(--safe-b));display:flex;flex-direction:column;gap:14px}
 .toast{position:fixed;left:50%;bottom:calc(80px + var(--safe-b));transform:translateX(-50%);background:var(--ink);color:#1B2346;padding:12px 18px;border-radius:14px;font-weight:800;z-index:60;max-width:90vw;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.3)}
 .center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;flex:1;padding:30px 10px}
@@ -115,6 +115,43 @@ table.tab .n{text-align:right}
 .in{animation:in .45s ease both}
 @keyframes in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.in,.spinner{animation:none}}
+
+/* ---- rifiniture da app nativa ---- */
+:root{--ease-out:cubic-bezier(.23,1,.32,1);--ease-sheet:cubic-bezier(.32,.72,0,1)}
+html{-webkit-text-size-adjust:100%;overscroll-behavior:none}
+input,textarea,select{font-size:16px}
+button,a,label.btn,.check,.opt,.chip,.pchip,.star,[data-a]{touch-action:manipulation}
+button,label.btn,.chip,.pchip,.seg,.nav,.tag,.star,.opt{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.btn,.chip,.pchip,.opt,.seg button,.nav button,.star,.check{transition:transform 120ms var(--ease-out),background-color 160ms var(--ease-out),border-color 160ms var(--ease-out),color 160ms var(--ease-out),opacity 160ms}
+.btn:active:not(:disabled),.chip:active,.pchip:active,.opt:active,.check:active{transform:scale(.97)}
+.seg button:active,.nav button:active{transform:scale(.94)}
+.star:active{transform:scale(.85)}
+button:focus-visible,label.btn:focus-within,.check:focus-within{outline:2px solid var(--acc);outline-offset:2px}
+.sheet{overscroll-behavior:contain;animation:sheetsu 420ms var(--ease-sheet) both}
+@keyframes velo{from{opacity:0}}
+@keyframes sheetsu{from{transform:translateY(100%)}to{transform:none}}
+.toast{animation:toastsu 260ms var(--ease-out) both}
+@keyframes toastsu{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+.in{animation:in 320ms var(--ease-out) both}
+@media (prefers-reduced-motion:reduce){.sheet,.toast,.overlay{animation:none}.btn:active,.chip:active,.pchip:active,.opt:active,.check:active,.star:active{transform:none}}
+
+/* ---- superfici del browser e dettagli ---- */
+::selection{background:rgba(255,200,87,.38);color:var(--ink)}
+input,textarea{caret-color:var(--acc)}
+input::placeholder,textarea::placeholder{color:rgba(255,246,229,.5)}
+*{scrollbar-width:thin;scrollbar-color:rgba(255,246,229,.22) transparent}
+h1,h2,h3{text-wrap:balance}
+p{text-wrap:pretty}
+.big-num,table.tab,.otp,.stars{font-variant-numeric:tabular-nums}
+input[type=number]{-moz-appearance:textfield;appearance:textfield}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.seg button.on{background:var(--bg);color:var(--acc);box-shadow:0 1px 2px rgba(0,0,0,.25),0 0 0 1px rgba(255,200,87,.45)}
+.check input{appearance:none;-webkit-appearance:none;border:2px solid var(--line);border-radius:7px;background:transparent;display:grid;place-content:center;transition:background-color 160ms var(--ease-out),border-color 160ms var(--ease-out)}
+.check input::after{content:'';width:11px;height:6px;border:solid #1B2346;border-width:0 0 2.5px 2.5px;transform:rotate(-45deg) scale(0);transition:transform 160ms var(--ease-out);margin-top:-2px}
+.check input:checked{background:var(--acc);border-color:var(--acc)}
+.check input:checked::after{transform:rotate(-45deg) scale(1)}
+.photo-pick .big{border-radius:50% / 44%;width:84px!important;height:104px!important}
+.photo-pick .big img{object-fit:cover;width:100%;height:100%}
 </style>
 </head>
 <body>

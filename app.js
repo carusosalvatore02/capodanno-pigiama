@@ -431,6 +431,9 @@ function render() {
   const chiave = S.screen + '|' + S.tab + '|' + (S.wiz ? S.wiz.step : '') + '|' + (S.adm ? S.adm.sez : '');
   if (chiave === render.ultima) app.querySelectorAll('.body.in').forEach(e => e.classList.remove('in'));
   render.ultima = chiave;
+  // la finestra scivola su solo quando si apre, non a ogni tocco al suo interno
+  const sh = app.querySelector('.sheet'), ov = app.querySelector('.overlay');
+  if (sh) { if (render.sheet === S.sheet) { sh.style.animation = 'none'; ov.style.animation = 'none'; } render.sheet = S.sheet; } else render.sheet = null;
   if (sb) aggiornaOmini(false);
   if (attivo) { const el = document.getElementById(attivo); if (el && el.tagName === 'INPUT') { el.focus(); try { const v = el.value; el.value = ''; el.value = v; } catch (e) { /* number */ } } }
 }
@@ -537,7 +540,7 @@ function sceltaVoce(v) {
 }
 function fotoFiglio(pre, prev, url) {
   const img = prev || url;
-  return `<div class="photo-pick"><div class="big" style="width:76px;height:76px">${img ? `<img src="${esc(img)}" alt="">` : 'Viso<br>del bimbo'}</div>
+  return `<div class="photo-pick"><div class="big">${img ? `<img src="${esc(img)}" alt="">` : 'Viso<br>del bimbo'}</div>
     <div class="col grow"><button class="btn ghost" data-a="visocam" data-v="${pre === 's' ? 'sheetkid' : 'wizkid'}">Scatta</button><label class="btn ghost filebtn">Dalla galleria<input type="file" accept="image/*" data-file="visogal" data-dest="${pre === 's' ? 'sheetkid' : 'wizkid'}"></label></div></div>`;
 }
 function formFiglio(pre, nome, eta, titolo, prev, url) {
@@ -655,7 +658,7 @@ function vistaSheet() {
     <div class="field"><label for="s-fn">Nickname della squadra</label><input id="s-fn" type="text" data-k="nickname" value="${esc(s.nickname)}"></div>
     ${s.err ? `<div class="err" role="alert">${esc(s.err)}</div>` : ''}
     <button class="btn full" data-a="ssalvafam" ${s.busy ? 'disabled' : ''}>Salva</button>`;
-  return `<div class="overlay" data-a="chiudisheet"><div class="sheet in" role="dialog" aria-modal="true">${b}<button class="btn ghost full" data-a="chiudisheet">Annulla</button></div></div>`;
+  return `<div class="overlay" data-a="chiudisheet"><div class="sheet" role="dialog" aria-modal="true">${b}<button class="btn ghost full" data-a="chiudisheet">Annulla</button></div></div>`;
 }
 
 // ================================================================ SERATA: PRONOSTICI, VOTI, SPAREGGIO, CLASSIFICHE
