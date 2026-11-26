@@ -212,7 +212,10 @@ async function spRitorno() {   // rientro dalla pagina di Spotify con ?code=...
 async function spApi(metodo, percorso, corpo) {
   const tk = await spToken(); if (!tk) throw new Error('Spotify non collegato');
   const r = await fetch('https://api.spotify.com/v1' + percorso, { method: metodo, headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' }, body: corpo ? JSON.stringify(corpo) : undefined });
-  if (!r.ok && r.status !== 204) throw new Error('Spotify ' + r.status);
+  if (!r.ok && r.status !== 204) {
+    let det = ''; try { const j = await r.json(); det = (j.error && (j.error.message || j.error.reason)) || ''; } catch (e) { /* niente */ }
+    throw new Error('Spotify ' + r.status + (det ? ' – ' + det : ''));
+  }
 }
 function spPrepara() {   // carica il lettore Spotify nella pagina
   if (!SPC.clientId || !SP.refresh || SP.player) return;
