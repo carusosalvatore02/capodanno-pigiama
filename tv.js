@@ -183,7 +183,7 @@ async function spCollega() {
   localStorage.setItem('pigiama-spotify-v', v);
   const sfida = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v)));
   const p = new URLSearchParams({ response_type: 'code', client_id: SPC.clientId, redirect_uri: SP_URI, code_challenge_method: 'S256', code_challenge: sfida,
-    scope: 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state' });
+    scope: 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state', show_dialog: 'true' });
   location.href = 'https://accounts.spotify.com/authorize?' + p;
 }
 function spSalva(j) {
@@ -221,17 +221,21 @@ function spPrepara() {   // carica il lettore Spotify nella pagina
     SP.player.addListener('ready', ({ device_id }) => { SP.device = device_id; SP.pronto = true; T.musicaGruppo = null; $('musica').pause(); aggiornaMusica(); aggiornaStatoSpotify(); });
     SP.player.addListener('not_ready', () => { SP.pronto = false; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(); });
     ['initialization_error', 'authentication_error', 'account_error'].forEach(ev => SP.player.addListener(ev, e => {
-      console.warn('Spotify', ev, e && e.message); SP.pronto = false; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(e && e.message);
+      console.warn('Spotify', ev, e && e.message); SP.pronto = false; SP.ultimoErr = e && e.message; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(e && e.message);
     }));
     SP.player.connect();
+    spToken().then(tk => tk && fetch('https://api.spotify.com/v1/me', { headers: { Authorization: 'Bearer ' + tk } })).then(r => r && r.ok ? r.json() : null)
+      .then(me => { if (me) { SP.chi = (me.email || me.display_name || '') + (me.product ? ' · piano ' + me.product : ''); aggiornaStatoSpotify(SP.ultimoErr); } }).catch(() => {});
   };
   const s = document.createElement('script'); s.src = 'https://sdk.scdn.co/spotify-player.js'; document.head.appendChild(s);
 }
 function aggiornaStatoSpotify(err) {
   const el = $('spstato'); if (!el) return;
   el.innerHTML = !SPC.clientId ? '' : spotifyAttivo() ? '<span class="acc">Spotify collegato</span> · la musica arriva dalle tue playlist'
-    : SP.refresh ? (err ? `Spotify non disponibile (${esc(err)}): uso gli MP3` : 'Collegamento a Spotify…') : '<button class="btn ghost" id="spcollega">Collega Spotify</button>';
+    : SP.refresh ? (err ? `Spotify non disponibile (${esc(err)}): uso gli MP3${SP.chi ? `<br><span style="font-size:15px">Account collegato: <b>${esc(SP.chi)}</b></span>` : ''}<br><button class="btn ghost" id="spscollega" style="margin-top:10px">Scollega e ricollega Spotify</button>` : 'Collegamento a Spotify…')
+    : `<button class="btn ghost" id="spcollega">Collega Spotify</button><div style="font-size:14px;margin-top:10px;opacity:.8">Redirect URI da registrare su Spotify:<br><b style="user-select:all">${esc(SP_URI)}</b></div>`;
   const b = $('spcollega'); if (b) b.onclick = spCollega;
+  const x = $('spscollega'); if (x) x.onclick = () => { localStorage.removeItem('pigiama-spotify'); SP.refresh = null; SP.token = null; spCollega(); };
 }
 function musicaSpotify(gruppo, cfg) {
   const uri = spPlaylist(gruppo);
