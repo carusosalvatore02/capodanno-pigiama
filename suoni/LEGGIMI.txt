@@ -1,0 +1,17 @@
+CARTELLA SUONI DEGLI OMINI
+==========================
+Metti qui i file MP3 (brevi, 1-3 secondi) e scrivi i nomi in config.js, nel blocco SUONI.
+Finché una lista è vuota, l'omino usa un verso generato dall'app (funziona lo stesso).
+
+Nomi consigliati:
+  uomo-ahia-1.mp3   uomo-ahia-2.mp3    (gemito di dolore maschile: "ahi!", "ouch")
+  uomo-urlo-1.mp3                      (urlo lungo maschile: "uoooooh", 2-3 secondi)
+  donna-ahia-1.mp3  donna-ahia-2.mp3
+  donna-urlo-1.mp3
+  bimbo-ahia-1.mp3  bimbo-ahia-2.mp3
+  bimbo-urlo-1.mp3
+  tonfo-1.mp3                          (colpo sordo, "thud")
+
+Dove trovarli gratis (uso libero, senza citare l'autore): pixabay.com/sound-effects
+Cerca: "male ouch", "male scream", "female ouch", "female scream",
+       "kid ouch", "child scream", "thud body fall".
