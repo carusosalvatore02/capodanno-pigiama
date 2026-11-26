@@ -1,1 +1,4 @@
-Metti qui i file MP3 e scrivi i loro nomi in config.js (MUSICA).
+MUSICA DI SOTTOFONDO DELLA TV (MP3 in questa cartella, nomi in config.js blocco MUSICA)
+  cena:         jazz/swing natalizio tranquillo  (cerca su pixabay.com/music: christmas jazz, christmas swing)
+  premiazione:  suspense da quiz show            (cerca: game show, quiz suspense)
+  festa:        musica da ballo allegra          (cerca: party dance, new year celebration)
