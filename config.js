@@ -39,7 +39,7 @@ window.CONFIG = {
   SPOTIFY: {
     clientId: '0f994dfd8c794e27a7f68d9827ebcf4a',
     playlist: {
-      cena:        'https://open.spotify.com/playlist/2OxJrcgA6AQGk1sSQ8ZZ2a',
+      cena:        'https://open.spotify.com/playlist/0m4EtmlNBsv8cI3NwbVEMy',
       pegni:       'https://open.spotify.com/playlist/48I6rPdTiVm3fyPRUUaa4f',
       premiazione: 'https://open.spotify.com/playlist/2V7ZRCHDQ11JvNZF4Ghxzc',
       finale:      'https://open.spotify.com/playlist/5uoSkNuNNoDJNDutYwilb5',
