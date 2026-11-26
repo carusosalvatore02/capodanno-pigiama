@@ -404,14 +404,33 @@ const ICONE = {
   famiglia: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M15 14.5c.6-.3 1.3-.5 2-.5 2.8 0 4 2 4 4.5"/></svg>',
   regole: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7M9 7h4"/></svg>',
   admin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>',
-  luna: '<svg class="moon" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="54" r="34" fill="#FFC857"/><circle cx="66" cy="44" r="31" fill="#1B2346"/><path d="M20 40q-3-22 16-27q4 16-5 27z" fill="#FF9EB1"/><circle cx="36" cy="11" r="5" fill="#FFF6E5"/></svg>'
+  luna: '<svg class="moon" viewBox="0 0 100 100" aria-hidden="true"><defs><mask id="lunaM"><rect width="100" height="100" fill="#fff"/><circle cx="66" cy="44" r="29" fill="#000"/></mask><radialGradient id="lunaG" cx="35%" cy="65%" r="70%"><stop offset="0" stop-color="#FFE08A"/><stop offset="1" stop-color="#F7B733"/></radialGradient></defs><circle cx="48" cy="56" r="36" fill="url(#lunaG)" mask="url(#lunaM)"/><path d="M27 55q4 3.5 8 0" fill="none" stroke="#7A4A12" stroke-width="2" stroke-linecap="round"/><circle cx="29" cy="64" r="3.6" fill="#FF9EB1" opacity=".7"/><path d="M33 71q4 2.5 7-1" fill="none" stroke="#7A4A12" stroke-width="1.8" stroke-linecap="round"/><defs><linearGradient id="lunaC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF6B7A"/><stop offset="1" stop-color="#D93248"/></linearGradient><linearGradient id="lunaP" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#EADFCB"/></linearGradient><radialGradient id="lunaB" cx="38%" cy="35%" r="70%"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E6DAC4"/></radialGradient></defs><path d="M19.80 28.77 L21.26 28.28 L22.52 27.65 L23.72 26.99 L24.91 26.34 L26.08 25.69 L27.25 25.06 L28.42 24.46 L29.61 23.88 L30.80 23.34 L32.00 22.82 L33.21 22.35 L34.43 21.91 L35.67 21.52 L36.91 21.16 L38.17 20.85 L39.43 20.57 L40.70 20.34 L41.97 20.15 L43.25 20.01 L44.52 19.90 L45.80 19.83 L47.08 19.81 L48.36 19.83 L49.64 19.88 L50.91 19.98 L52.20 20.01 L53.48 20.10 L54.75 20.26 L56.02 20.47 L57.28 20.76 L58.52 21.11 L59.73 21.53 L60.92 22.02 L62.08 22.59 L63.19 23.23 L64.26 23.94 L65.28 24.72 L66.24 25.58 L67.14 26.50 L67.96 27.49 L65.90 30.44 L64.75 30.18 L63.59 30.00 L62.41 29.93 L61.22 29.95 L60.03 30.06 L58.84 30.27 L57.68 30.56 L56.53 30.94 L55.41 31.41 L54.33 31.95 L53.29 32.57 L52.30 33.26 L51.35 34.01 L50.47 34.83 L49.64 35.69 L48.87 36.73 L48.18 37.83 L47.57 38.96 L47.04 40.14 L46.59 41.33 L46.22 42.55 L45.94 43.76 L45.74 44.98 L45.62 46.17 L45.58 47.34 L45.61 48.48 L45.70 49.57 L45.86 50.62 L46.07 51.60 L46.33 52.53 L46.62 53.38 L46.95 54.17 L47.31 54.88 L47.68 55.53 L48.07 56.09 L48.46 56.59 L48.86 57.03 L49.27 57.42 L49.71 57.77 L50.30 58.22Z" fill="url(#lunaC)"/><rect x="12.06" y="42.48" width="42.40" height="6.4" rx="3.2" transform="rotate(-145.0 33.26 45.68)" fill="#E0951C" opacity=".28" mask="url(#lunaM)"/><rect x="12.65" y="38.50" width="44.80" height="10" rx="5" transform="rotate(-136.0 35.05 43.50)" fill="url(#lunaP)"/><circle cx="66.93" cy="32.27" r="5.5" fill="url(#lunaB)"/></svg>'
 };
 function luci() {
-  const c = ['#FFC857', '#FF6B6B', '#7FD8FF', '#FFF6E5', '#8EE07F'];
-  return `<div class="lights" aria-hidden="true">${Array.from({ length: 9 }, (_, i) => `<i style="background:${c[i % 5]};box-shadow:0 0 8px ${c[i % 5]}"></i>`).join('')}</div>`;
+  const c = ['#FFC857', '#FF6B6B', '#7FD8FF', '#FFF6E5', '#8EE07F'], n = 9;
+  // filo che pende in due archi, lampadine appese lungo la curva
+  const y = x => 6 + 14 * Math.sin(Math.PI * ((x * 2) % 1));
+  const bulbi = Array.from({ length: n }, (_, i) => {
+    const x = (i + .5) / n, col = c[i % 5];
+    return `<i style="left:${(x * 100).toFixed(1)}%;top:${(y(x) + 3).toFixed(1)}px;background:${col};box-shadow:0 0 10px ${col},0 0 2px ${col};animation-delay:${(i * 0.37 % 2.4).toFixed(2)}s"></i>`;
+  }).join('');
+  return `<div class="lights" aria-hidden="true"><svg class="filo" viewBox="0 0 100 40" preserveAspectRatio="none"><path d="M0 6 Q25 34 50 6 Q75 34 100 6" fill="none" stroke="#2F4A3A" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>${bulbi}</div>`;
 }
+function contoAllaRovescia() {
+  const ms = new Date(C.DATA_FESTA || '2026-12-31T20:00:00+01:00') - new Date();
+  if (ms <= 0) return null;
+  const g = Math.floor(ms / 864e5), o = Math.floor(ms % 864e5 / 36e5), m = Math.floor(ms % 36e5 / 6e4);
+  const due = v => String(v).padStart(2, '0');
+  return [[g, g === 1 ? 'giorno' : 'giorni'], [due(o), o === 1 ? 'ora' : 'ore'], [due(m), 'minuti']];
+}
+// aggiorna i numeri del conto alla rovescia senza ridisegnare la pagina
+setInterval(() => {
+  const el = document.querySelector('.conta'); if (!el) return;
+  const v = contoAllaRovescia(); if (!v) return;
+  el.querySelectorAll('b').forEach((b, i) => { if (b.textContent !== String(v[i][0])) b.textContent = v[i][0]; });
+}, 15000);
 function testata(dx) {
-  return `<div class="head"><div class="logo">Capodanno <span>in Pigiama</span></div>${dx || ''}</div>`;
+  return `<div class="head"><div class="logo">${ICONE.luna.replace('class="moon"', '')}<div>Capodanno <span>in Pigiama</span></div></div>${dx || ''}</div>`;
 }
 
 function render() {
@@ -593,18 +612,18 @@ function vistaHome() {
   const fase = S.serata ? S.serata.fase : 'iscrizioni';
   if (fase !== 'iscrizioni') return vistaSerata();
   {
-    const ms = new Date(C.DATA_FESTA || '2026-12-31T20:00:00+01:00') - new Date();
-    const giorni = Math.floor(ms / 864e5), ore = Math.floor(ms % 864e5 / 36e5);
+    const v = contoAllaRovescia();
     const r = promemoria();
-    return `<div class="card" style="text-align:center">
-        ${ms > 0 ? `<div class="tiny mute" style="font-weight:800;letter-spacing:.08em">MANCANO</div>
-        <div class="big-num">${giorni > 0 ? giorni : ore}</div><div class="f" style="font-size:20px">${giorni > 0 ? (giorni === 1 ? 'giorno' : 'giorni') : (ore === 1 ? 'ora' : 'ore')} al Capodanno in Pigiama!</div>`
-        : `<div class="f" style="font-size:30px;color:var(--acc)">Ci siamo!</div><p class="mute">Benvenuti alla festa: tra poco si parte.</p>`}
+    return `<div class="card festa">${ICONE.luna}
+        ${v ? `<div class="tit">Mancano</div>
+        <div class="conta" role="timer" aria-label="Tempo che manca alla festa">${v.map(([n, l]) => `<div><b>${n}</b><span>${l}</span></div>`).join('')}</div>
+        <div class="sotto">al Capodanno in Pigiama!</div>`
+        : `<div class="f" style="font-size:30px;color:var(--acc);margin-top:20px">Ci siamo!</div><p class="mute">Benvenuti alla festa: tra poco si parte.</p>`}
         ${luci()}
       </div>
       <div class="card"><h3>Ciao ${esc(nomeVisto(S.me))}!</h3><p class="small mute">Fai parte della ${esc(nomeFamiglia(S.fam))}.</p></div>
       ${cardPasskey(true)}
-      ${r.length ? `<div class="card"><h3>Promemoria</h3>${r.map(([t, tab]) => `<div class="reminder">• <span class="grow">${esc(t)}</span>${tab ? `<button class="chip" data-a="tab" data-v="${tab}">Vai</button>` : ''}</div>`).join('')}</div>` : ''}
+      ${r.length ? `<div class="card"><h3>Promemoria</h3>${r.map(([t, tab]) => `<div class="reminder"><span class="grow">${esc(t)}</span>${tab ? `<button class="chip" data-a="tab" data-v="${tab}">Vai</button>` : ''}</div>`).join('')}</div>` : ''}
       ${!isStandalone() ? guidaInstallazione() : ''}
       <div class="card"><h3>Cosa succede la sera</h3><p class="small mute">Pronostici, votazioni dei pigiami, pegni per chi arriva vestito, premiazione dei bimbi e classifiche finali. Tutto da qui, dal tuo telefono.</p></div>`;
   }
@@ -1132,8 +1151,8 @@ function vistaShow() {
       <div class="row"><button class="btn ghost grow" data-a="admusica">${mus.on === false ? 'Accendi' : 'Spegni'}</button><button class="btn ghost grow" data-a="adbrano">Brano successivo</button></div>
       <div class="row"><button class="btn ghost" data-a="advol" data-v="-1" aria-label="Volume giù">−</button><span class="grow" style="text-align:center">Volume ${Math.round((mus.vol == null ? .6 : mus.vol) * 100)}%</span><button class="btn ghost" data-a="advol" data-v="1" aria-label="Volume su">+</button></div>`
     : '<p class="small mute">Nessun brano: aggiungi gli MP3 nella cartella "musica" e i loro nomi in config.js.</p>'}</div>`;
-  const conto = `<div class="card col"><h3>Countdown di mezzanotte</h3><p class="small mute">Parte da solo sulla TV 5 minuti prima di mezzanotte (orologio del portatile)${cd.rinvio ? `, spostato di ${cd.rinvio} min` : ''}, e interrompe qualsiasi schermata. Dopo "Buon anno!" la TV torna dov'era.</p>
-    <div class="row"><button class="btn ghost grow" data-a="adcdora">Avvia ora (10 s)</button><button class="btn ghost grow" data-a="adcdrinvia">Rimanda 1 min</button></div>${cd.rinvio ? `<button class="chip" data-a="adcdazzera">Annulla il rinvio</button>` : ''}</div>`;
+  const conto = `<div class="card col"><h3>Countdown di mezzanotte</h3><p class="small mute">Parte da solo sulla TV 5 minuti prima di mezzanotte (orologio del portatile)${cd.rinvio ? `, spostato di ${cd.rinvio} min` : ''}, e interrompe qualsiasi schermata. Dopo "Buon anno!" la TV torna dov'era. "Prova ora" fa un conto alla rovescia di 10 secondi.</p>
+    <div class="row"><button class="btn ghost grow" data-a="adcdora">Prova ora</button><button class="btn ghost grow" data-a="adcdrinvia">Rimanda 1 min</button></div>${cd.rinvio ? `<button class="chip" data-a="adcdazzera">Annulla il rinvio</button>` : ''}</div>`;
   if (!['premiazione', 'fine'].includes(fase) || !tv.steps) {
     return `<div class="card"><h3>Premiazione</h3><p class="small mute">I comandi compaiono quando passi alla fase "Premiazione" dalla scheda Fasi.</p></div>${tvBox}${conto}${musica}`;
   }

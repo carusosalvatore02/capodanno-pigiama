@@ -41,7 +41,7 @@ function abbassaMusica(sec) {
   const v = musicaVol(); m.volume = v * .2;
   clearTimeout(abbassaMusica.t); abbassaMusica.t = setTimeout(() => { m.volume = v; }, sec * 1000);
 }
-const suoni = {
+const sintetici = {
   tamburi(sec) { abbassaMusica(sec + 2); for (let t = 0; t < sec; t += .045) rumore(t, .05, .05 + .25 * (t / sec), 300); rumore(sec, .9, .5, 3000); tono(110, sec, .6, 'sine', .4); },
   fanfara() { abbassaMusica(2.5); [523, 659, 784, 1047].forEach((f, i) => tono(f, i * .13, .35, 'sawtooth', .12)); tono(1047, .55, .9, 'triangle', .18); tono(784, .55, .9, 'triangle', .12); },
   applausi() { abbassaMusica(3); for (let i = 0; i < 60; i++) rumore(Math.random() * 2.5, .03, .15 * Math.random(), 1500); },
@@ -49,6 +49,37 @@ const suoni = {
   tic() { tono(1800, 0, .04, 'square', .08); },
   bip() { tono(880, 0, .12, 'sine', .15); },
   fine() { tono(330, 0, .6, 'square', .15); }
+};
+
+// Suoni veri (config.js → SUONI_TV): se un file c'è lo usa, altrimenti il suono generato qui sopra
+const bufTv = {};
+async function caricaSuoniTv() {
+  const a = ac(), cfg = C.SUONI_TV || {}; if (!a) return;
+  for (const [k, lista] of Object.entries(cfg)) {
+    for (const url of [].concat(lista || [])) {
+      try { const r = await fetch(url); if (!r.ok) throw 0; (bufTv[k] = bufTv[k] || []).push(await a.decodeAudioData(await r.arrayBuffer())); }
+      catch (e) { console.warn('Suono non trovato:', url); }
+    }
+  }
+}
+function suonaFile(k, vol, maxSec) {
+  const l = bufTv[k], a = ac(); if (!l || !l.length || !a) return false;
+  const b = l[Math.floor(Math.random() * l.length)];
+  const s = a.createBufferSource(), g = a.createGain(); s.buffer = b; g.gain.value = vol == null ? .9 : vol;
+  s.connect(g).connect(a.destination); s.start();
+  if (maxSec && b.duration > maxSec) { g.gain.setValueAtTime(g.gain.value, a.currentTime + maxSec - .25); g.gain.linearRampToValueAtTime(0, a.currentTime + maxSec); s.stop(a.currentTime + maxSec + .05); }
+  abbassaMusica(Math.min(b.duration, maxSec || 99) + .5);
+  return true;
+}
+const suoni = {
+  tamburi(sec) { if (!suonaFile('rullo', .9, sec + 1)) sintetici.tamburi(sec); },
+  fanfara() { if (!suonaFile('fanfara')) sintetici.fanfara(); },
+  applausi() { if (!suonaFile('applausi', .8)) sintetici.applausi(); },
+  ding() { if (!suonaFile('ding', .7)) sintetici.ding(); },
+  tic() { if (!suonaFile('tic', .5)) sintetici.tic(); },
+  bip() { if (!suonaFile('bip', .6)) sintetici.bip(); },
+  fine() { if (!suonaFile('fine')) sintetici.fine(); },
+  botti() { suonaFile('botti', .9); }
 };
 
 // ---------------------------------------------------------------- coriandoli
@@ -136,9 +167,17 @@ $('musica').addEventListener('ended', () => {
 });
 
 // ---------------------------------------------------------------- viste
+const LUNA = '<svg class="moon" viewBox="0 0 100 100" aria-hidden="true"><defs><mask id="lunaM"><rect width="100" height="100" fill="#fff"/><circle cx="66" cy="44" r="29" fill="#000"/></mask><radialGradient id="lunaG" cx="35%" cy="65%" r="70%"><stop offset="0" stop-color="#FFE08A"/><stop offset="1" stop-color="#F7B733"/></radialGradient></defs><circle cx="48" cy="56" r="36" fill="url(#lunaG)" mask="url(#lunaM)"/><path d="M27 55q4 3.5 8 0" fill="none" stroke="#7A4A12" stroke-width="2" stroke-linecap="round"/><circle cx="29" cy="64" r="3.6" fill="#FF9EB1" opacity=".7"/><path d="M33 71q4 2.5 7-1" fill="none" stroke="#7A4A12" stroke-width="1.8" stroke-linecap="round"/><defs><linearGradient id="lunaC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF6B7A"/><stop offset="1" stop-color="#D93248"/></linearGradient><linearGradient id="lunaP" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#EADFCB"/></linearGradient><radialGradient id="lunaB" cx="38%" cy="35%" r="70%"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E6DAC4"/></radialGradient></defs><path d="M19.80 28.77 L21.26 28.28 L22.52 27.65 L23.72 26.99 L24.91 26.34 L26.08 25.69 L27.25 25.06 L28.42 24.46 L29.61 23.88 L30.80 23.34 L32.00 22.82 L33.21 22.35 L34.43 21.91 L35.67 21.52 L36.91 21.16 L38.17 20.85 L39.43 20.57 L40.70 20.34 L41.97 20.15 L43.25 20.01 L44.52 19.90 L45.80 19.83 L47.08 19.81 L48.36 19.83 L49.64 19.88 L50.91 19.98 L52.20 20.01 L53.48 20.10 L54.75 20.26 L56.02 20.47 L57.28 20.76 L58.52 21.11 L59.73 21.53 L60.92 22.02 L62.08 22.59 L63.19 23.23 L64.26 23.94 L65.28 24.72 L66.24 25.58 L67.14 26.50 L67.96 27.49 L65.90 30.44 L64.75 30.18 L63.59 30.00 L62.41 29.93 L61.22 29.95 L60.03 30.06 L58.84 30.27 L57.68 30.56 L56.53 30.94 L55.41 31.41 L54.33 31.95 L53.29 32.57 L52.30 33.26 L51.35 34.01 L50.47 34.83 L49.64 35.69 L48.87 36.73 L48.18 37.83 L47.57 38.96 L47.04 40.14 L46.59 41.33 L46.22 42.55 L45.94 43.76 L45.74 44.98 L45.62 46.17 L45.58 47.34 L45.61 48.48 L45.70 49.57 L45.86 50.62 L46.07 51.60 L46.33 52.53 L46.62 53.38 L46.95 54.17 L47.31 54.88 L47.68 55.53 L48.07 56.09 L48.46 56.59 L48.86 57.03 L49.27 57.42 L49.71 57.77 L50.30 58.22Z" fill="url(#lunaC)"/><rect x="12.06" y="42.48" width="42.40" height="6.4" rx="3.2" transform="rotate(-145.0 33.26 45.68)" fill="#E0951C" opacity=".28" mask="url(#lunaM)"/><rect x="12.65" y="38.50" width="44.80" height="10" rx="5" transform="rotate(-136.0 35.05 43.50)" fill="url(#lunaP)"/><circle cx="66.93" cy="32.27" r="5.5" fill="url(#lunaB)"/></svg>';
 function luci() {
-  const c = ['#FFC857', '#FF6B6B', '#7FD8FF', '#FFF6E5', '#8EE07F'];
-  return `<div class="lights">${Array.from({ length: 22 }, (_, i) => `<i style="background:${c[i % 5]};box-shadow:0 0 12px ${c[i % 5]}"></i>`).join('')}</div>`;
+  // ghirlanda: filo che pende in 4 archi lungo tutta la base, lampadine appese che brillano a turno
+  const c = ['#FFC857', '#FF6B6B', '#7FD8FF', '#FFF6E5', '#8EE07F'], n = 24, archi = 4;
+  const y = x => 10 + 22 * Math.sin(Math.PI * ((x * archi) % 1));
+  const bulbi = Array.from({ length: n }, (_, i) => {
+    const x = (i + .5) / n, col = c[i % 5];
+    return `<i style="left:${(x * 100).toFixed(2)}%;top:${(y(x) + 4).toFixed(1)}px;background:${col};box-shadow:0 0 16px ${col},0 0 4px ${col};animation-delay:${(i * .41 % 2.4).toFixed(2)}s"></i>`;
+  }).join('');
+  let d = 'M0 10'; for (let k = 0; k < archi; k++) d += ` Q${(k + .5) * 1280 / archi} 54 ${(k + 1) * 1280 / archi} 10`;
+  return `<div class="lights"><svg viewBox="0 0 1280 64" preserveAspectRatio="none"><path d="${d}" fill="none" stroke="#2F4A3A" stroke-width="3"/></svg>${bulbi}</div>`;
 }
 function qr() {
   try {
@@ -149,7 +188,7 @@ function qr() {
 }
 function vistaAccoglienza() {
   const pres = T.persone.filter(p => p.presente).length;
-  return `<div class="c"><div class="s in">31 dicembre · Cena di Capodanno</div>
+  return `<div class="luna-tv in">${LUNA}</div><div class="c" style="padding-bottom:150px"><div class="s in">31 dicembre · Cena di Capodanno</div>
     <div class="t in2" style="margin:14px 0 24px">Capodanno<br><span class="acc">in Pigiama!</span></div>
     <div class="row in3" style="gap:36px">${qr()}<div style="text-align:left"><div class="f" style="font-size:40px">Inquadra il QR</div><div class="s" style="font-size:26px">per aprire l'app</div>
       <div class="f acc" style="font-size:34px;margin-top:12px">Presenti ${pres}/${T.persone.length}</div></div></div></div>
@@ -285,9 +324,17 @@ function scena() {
   if (f === 'votazioni_chiuse') return `<div class="c"><div class="t in">Votazioni <span class="acc">chiuse</span></div><div class="s in2" style="margin-top:24px">Tra poco la premiazione…</div></div>${luci()}`;
   return vistaPremiazione();
 }
+function chiaveScena() { const tv = T.serata.tv || {}; return T.serata.fase + '|' + (tv.i == null ? '' : tv.i) + '|' + (T.rivelato ? 1 : 0) + '|' + (T.sp ? T.sp.id : ''); }
 function disegna() {
   if (T.girando) return;
-  $('scena').innerHTML = scena();
+  // ridisegna solo se qualcosa è cambiato: altrimenti le animazioni d'ingresso ripartono di continuo
+  const html = scena();
+  if (html !== disegna.ultimo) {
+    const el = $('scena'), stessa = disegna.chiave === chiaveScena();
+    el.innerHTML = html; disegna.ultimo = html;
+    if (stessa) el.querySelectorAll('.in,.in2,.in3,.pop').forEach(e => e.classList.remove('in', 'in2', 'in3', 'pop'));
+    disegna.chiave = chiaveScena();
+  }
   disegnaTimer();
   scenaOmini();
 }
@@ -311,7 +358,7 @@ function scenaOmini() {
   if (['iscrizioni', 'attesa', 'pronostici', 'votazioni', 'votazioni_chiuse'].includes(f)) {
     const base = presenti.length ? presenti : conFaccia;
     chiave += '|' + base.map(p => p.id).join(',');
-    lista = sorteggio(base, 7).map(p => ({ id: p.id, fa: 'passeggia', scala: .5 }));
+    lista = sorteggio(base, 7).map(p => ({ id: p.id, fa: 'passeggia', scala: .42 }));
   } else if (s) {
     chiave += '|' + tv.i + '|' + (T.rivelato ? 1 : 0) + '|' + (T.sp ? T.sp.id : '');
     const ha = id => conFaccia.some(p => p.id === id);
@@ -319,7 +366,7 @@ function scenaOmini() {
     else if (s.k === 'bimbiFine') { T.terra = 648; lista = presenti.filter(p => p.tipo === 'bimbo').slice(0, 8).map((p, i, a) => ({ id: p.id, x: 120 + i * (1040 / Math.max(1, a.length - 1 || 1)), fa: 'festa', scala: .5 })); }
     else if (s.k === 'catFinal' && R) { T.terra = 648; const rc = R.premi.find(x => x.categoria_id === s.c); lista = (rc ? rc.classifica.slice(0, 3) : []).filter(x => ha(x.persona_id)).map((x, i) => ({ id: x.persona_id, x: 90 + i * 110, fa: 'saltella', scala: .42 })); }
     else if (s.k === 'catWin' && R && T.rivelato) { T.terra = 648; const rc = R.premi.find(x => x.categoria_id === s.c); if (rc && rc.vincitore_id && ha(rc.vincitore_id)) lista = [{ id: rc.vincitore_id, x: 170, fa: 'balla', scala: .75 }, { id: rc.vincitore_id, x: 1110, fa: 'festa', scala: .75 }]; }
-    else if (s.k === 'famWin' && R && T.rivelato && R.famiglie[0]) { T.terra = 648; const m = presenti.filter(p => p.famiglia_id === R.famiglie[0].famiglia_id); lista = m.map((p, i) => ({ id: p.id, x: i % 2 ? 1180 - Math.floor(i / 2) * 120 : 100 + Math.floor(i / 2) * 120, fa: 'balla', scala: .6 })); }
+    else if (s.k === 'famWin' && R && T.rivelato && R.famiglie[0]) { T.terra = 648; const m = presenti.filter(p => p.famiglia_id === R.famiglie[0].famiglia_id); lista = m.map((p, i) => ({ id: p.id, x: i % 2 ? 1200 - Math.floor(i / 2) * 70 : 80 + Math.floor(i / 2) * 70, fa: 'balla', scala: .42 })); }
     else if (s.k === 'fine') { const v = sorteggio(presenti, 10); lista = v.map((p, i) => ({ id: p.id, x: 70 + i * (1140 / Math.max(1, v.length - 1 || 1)), fa: 'balla', scala: .45 })); }
   }
   if (chiave === chiaveOmini) return;
@@ -439,7 +486,7 @@ function tickCountdown() {
     if (T.ultimoNum !== resta) { T.ultimoNum = resta; suoni.bip(); }
     el.innerHTML = `<div class="t pop acc" style="font-size:360px">${resta}</div>`;
   } else {
-    if (T.ultimoBoom !== target) { T.ultimoBoom = target; suoni.fanfara(); suoni.applausi(); fuochi(); setTimeout(fuochi, 4000); if (!T.cdStart) { T.festa = true; aggiornaMusica(); } }
+    if (T.ultimoBoom !== target) { T.ultimoBoom = target; suoni.fanfara(); suoni.applausi(); suoni.botti(); fuochi(); setTimeout(fuochi, 4000); if (!T.cdStart) { T.festa = true; aggiornaMusica(); } }
     el.innerHTML = `<div class="t pop acc" style="font-size:170px">Buon ${anno}!</div><div class="s in2" style="margin-top:24px">Auguri a tutti!</div>${luci()}`;
   }
 }
@@ -454,19 +501,19 @@ addEventListener('resize', adatta);
 // ---------------------------------------------------------------- avvio
 function schermataAvvio(msg) {
   $('start').style.display = 'flex';
-  $('start').innerHTML = `<div class="t" style="font-size:56px">Capodanno <span class="acc">in Pigiama</span></div><div class="s" style="font-size:24px">Schermo TV</div>
+  $('start').innerHTML = `<div style="width:130px;height:130px">${LUNA}</div><div class="t" style="font-size:56px">Capodanno <span class="acc">in Pigiama</span></div><div class="s" style="font-size:24px">Schermo TV</div>
     ${msg || ''}<button class="btn" id="avvia">Avvia schermo TV</button>
     <p class="s" style="font-size:16px;max-width:560px">Il tocco serve a sbloccare suoni e musica. Poi lo schermo va da solo: si comanda tutto dal telefono, nella scheda Regia.</p>`;
   $('avvia').onclick = async () => {
     ac(); suoni.ding();
     try { await document.documentElement.requestFullscreen(); } catch (e) { /* facoltativo */ }
     try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) { /* facoltativo */ }
-    $('start').style.display = 'none'; T.avviato = true; aggiornaMusica(); disegna();
+    $('start').style.display = 'none'; T.avviato = true; caricaSuoniTv(); aggiornaMusica(); disegna();
   };
 }
 function schermataAccesso(err) {
   $('start').style.display = 'flex';
-  $('start').innerHTML = `<div class="t" style="font-size:56px">Capodanno <span class="acc">in Pigiama</span></div><div class="s" style="font-size:22px">Schermo TV · accedi con l'account dell'organizzatore</div>
+  $('start').innerHTML = `<div style="width:130px;height:130px">${LUNA}</div><div class="t" style="font-size:56px">Capodanno <span class="acc">in Pigiama</span></div><div class="s" style="font-size:22px">Schermo TV · accedi con l'account dell'organizzatore</div>
     <input class="txt" id="email" type="email" autocomplete="username" placeholder="La tua email">
     <input class="txt" id="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" placeholder="PIN di 6 cifre">
     <button class="btn" id="vai">Entra</button>

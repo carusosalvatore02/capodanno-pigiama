@@ -152,10 +152,42 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .check input:checked::after{transform:rotate(-45deg) scale(1)}
 .photo-pick .big{border-radius:50% / 44%;width:84px!important;height:104px!important}
 .photo-pick .big img{object-fit:cover;width:100%;height:100%}
+
+/* ---- più festa: cielo, profondità, ghirlanda ---- */
+html{background:#141A38}
+body{background:radial-gradient(120% 60% at 50% -10%,#2B3A78 0%,rgba(27,35,70,0) 60%),linear-gradient(180deg,#1B2346 0%,#151B3A 100%);background-attachment:fixed}
+#app{position:relative;z-index:1}
+.card{background:linear-gradient(180deg,rgba(255,246,229,.1),rgba(255,246,229,.04)) #1C244A;border-color:rgba(255,246,229,.14);box-shadow:0 12px 28px -16px rgba(5,8,25,.8),inset 0 1px 0 rgba(255,246,229,.09)}
+.btn:not(.ghost):not(.danger){background:linear-gradient(180deg,#FFD47E,#FFC145);box-shadow:0 8px 18px -8px rgba(255,193,69,.6),inset 0 1px 0 rgba(255,255,255,.45)}
+.nav{background:rgba(21,27,58,.88);-webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%)}
+.logo{display:flex;align-items:center;gap:8px}
+.logo svg{width:26px;height:26px;flex:none}
+.reminder::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--pink);box-shadow:0 0 8px var(--pink);flex:none}
+/* ghirlanda */
+.lights{display:block;position:relative;height:40px;margin:6px auto 0;max-width:300px;padding:0}
+.lights svg.filo{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.lights i{position:absolute;width:10px;height:15px;border-radius:50% 50% 50% 50% / 40% 40% 60% 60%;transform:translate(-50%,0);animation:brilla 2.4s ease-in-out infinite}
+.lights i::before{content:'';position:absolute;left:2px;top:-4px;width:6px;height:5px;border-radius:2px;background:#3B4A3F}
+@keyframes brilla{0%,100%{opacity:1;filter:brightness(1.1)}50%{opacity:.45;filter:brightness(.7)}}
+/* conto alla rovescia */
+.festa{position:relative;overflow:hidden;text-align:center;padding:22px 16px 14px;background:radial-gradient(90% 70% at 85% 0%,rgba(255,200,87,.18),rgba(255,200,87,0) 60%),linear-gradient(180deg,#26326A,#1D2650)}
+.festa .moon{position:absolute;right:-6px;top:-6px;width:86px;height:86px;transform:rotate(-8deg);opacity:.95}
+.festa .tit{font-family:'Fredoka';font-weight:600;font-size:17px;color:var(--mute);text-align:left;max-width:70%}
+.conta{display:flex;justify-content:center;gap:10px;margin:18px 0 6px}
+.conta div{min-width:78px;padding:10px 6px 8px;border-radius:16px;background:rgba(10,14,36,.45);box-shadow:inset 0 1px 0 rgba(255,246,229,.08),inset 0 -2px 0 rgba(0,0,0,.25)}
+.conta b{display:block;font-family:'Fredoka';font-weight:700;font-size:44px;line-height:1;color:var(--acc);font-variant-numeric:tabular-nums}
+.conta span{display:block;margin-top:4px;font-size:12px;font-weight:800;color:var(--mute)}
+.festa .sotto{font-family:'Fredoka';font-weight:600;font-size:19px}
+/* ingresso delle schede, una dopo l'altra */
+.body.in{animation:none}
+.body.in>*{animation:in 380ms var(--ease-out) both}
+.body.in>*:nth-child(2){animation-delay:50ms}.body.in>*:nth-child(3){animation-delay:100ms}.body.in>*:nth-child(4){animation-delay:150ms}.body.in>*:nth-child(n+5){animation-delay:190ms}
+@media (prefers-reduced-motion:reduce){.lights i,.body.in>*{animation:none}}
 </style>
 </head>
 <body>
 <div id="app"><div class="center"><div class="spinner"></div></div></div>
+<script src="cielo.js"></script>
 <div id="omini" style="position:fixed;inset:0;pointer-events:none;z-index:45;overflow:hidden"></div>
 <script src="vendor/supabase.js"></script>
 <script src="config.js"></script>
