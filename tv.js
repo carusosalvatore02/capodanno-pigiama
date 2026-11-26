@@ -218,9 +218,16 @@ function spPrepara() {   // carica il lettore Spotify nella pagina
   if (!SPC.clientId || !SP.refresh || SP.player) return;
   window.onSpotifyWebPlaybackSDKReady = () => {
     SP.player = new Spotify.Player({ name: 'Capodanno in Pigiama · TV', getOAuthToken: cb => spToken().then(t => cb(t)), volume: musicaVol() });
-    SP.player.addListener('ready', ({ device_id }) => { SP.device = device_id; SP.pronto = true; T.musicaGruppo = null; $('musica').pause(); aggiornaMusica(); aggiornaStatoSpotify(); });
+    SP.player.addListener('ready', async ({ device_id }) => {
+      SP.device = device_id;
+      try { await spApi('PUT', '/me/player', { device_ids: [device_id], play: false }); } catch (e) { avvisoSpotify('Spotify: ' + e.message); }
+      SP.pronto = true; T.musicaGruppo = null; $('musica').pause(); aggiornaMusica(); aggiornaStatoSpotify();
+      if (T.avviato) avvisoSpotify('Spotify collegato: la musica arriva dalle tue playlist');
+    });
     SP.player.addListener('not_ready', () => { SP.pronto = false; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(); });
+    SP.player.addListener('playback_error', e => avvisoSpotify('Spotify: ' + (e && e.message)));
     ['initialization_error', 'authentication_error', 'account_error'].forEach(ev => SP.player.addListener(ev, e => {
+      avvisoSpotify('Spotify non disponibile: ' + (e && e.message) + ' · uso gli MP3');
       console.warn('Spotify', ev, e && e.message); SP.pronto = false; SP.ultimoErr = e && e.message; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(e && e.message);
     }));
     SP.player.connect();
@@ -228,6 +235,13 @@ function spPrepara() {   // carica il lettore Spotify nella pagina
       .then(me => { if (me) { SP.chi = (me.email || me.display_name || '') + (me.product ? ' · piano ' + me.product : ''); aggiornaStatoSpotify(SP.ultimoErr); } }).catch(() => {});
   };
   const s = document.createElement('script'); s.src = 'https://sdk.scdn.co/spotify-player.js'; document.head.appendChild(s);
+}
+function avvisoSpotify(msg) {
+  console.warn(msg);
+  let el = $('spavviso');
+  if (!el) { el = document.createElement('div'); el.id = 'spavviso'; el.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:50;background:rgba(10,14,36,.9);color:#FFF6E5;border:1px solid rgba(255,246,229,.25);border-radius:12px;padding:10px 14px;font:700 15px Nunito,sans-serif;max-width:70vw'; document.body.appendChild(el); }
+  el.textContent = msg; el.style.display = 'block';
+  clearTimeout(avvisoSpotify.t); avvisoSpotify.t = setTimeout(() => { el.style.display = 'none'; }, 15000);
 }
 function aggiornaStatoSpotify(err) {
   const el = $('spstato'); if (!el) return;
@@ -244,9 +258,10 @@ function musicaSpotify(gruppo, cfg) {
   if (cfg.next && cfg.next !== T.ultimoNext) { T.ultimoNext = cfg.next; SP.player.nextTrack(); return; }
   if (gruppo !== T.musicaGruppo) {
     T.musicaGruppo = gruppo;
-    spApi('PUT', '/me/player/play?device_id=' + SP.device, { context_uri: uri })
+    const suona = () => spApi('PUT', '/me/player/play?device_id=' + SP.device, { context_uri: uri });
+    suona().catch(() => new Promise(r => setTimeout(r, 1500)).then(suona))
       .then(() => spApi('PUT', '/me/player/shuffle?state=true&device_id=' + SP.device).catch(() => {}))
-      .catch(e => { console.warn(e.message); SP.pronto = false; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(e.message); });
+      .catch(e => { console.warn(e.message); avvisoSpotify('La playlist "' + gruppo + '" non parte (' + e.message + '): uso gli MP3'); SP.pronto = false; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(e.message); });
   } else SP.player.resume();
 }
 
@@ -359,7 +374,11 @@ function vistaPremiazione() {
         <table class="cl" style="width:900px"><tr><th>Pos.</th><th>Famiglia</th><th class="n">Media stelle</th></tr>
         ${R.famiglie.map((x, i) => `<tr class="${i === 0 ? 'pod' : ''}" style="animation:in .6s ${((n - 1 - i) * .6).toFixed(2)}s both"><td>${i + 1}</td><td><b>${esc(nomeFam(famDi(x.famiglia_id)))}</b></td><td class="n f">${Number(x.media).toFixed(2).replace('.', ',')}</td></tr>`).join('')}</table></div>`;
     }
-    case 'fine': return `<div class="c"><div class="t pop acc" style="font-size:150px">Buon anno!</div><div class="s in2" style="margin-top:20px">Grazie a tutti i pigiami della serata</div></div>${luci()}`;
+    case 'fine': {
+      const anno = new Date(C.DATA_FESTA || '2026-12-31T20:00:00+01:00').getFullYear() + 1;
+      const dopo = Date.now() >= mezzanotte();
+      return `<div class="aug" style="position:absolute;inset:0;justify-content:flex-start"><div class="t pop acc aug-t">${dopo ? 'Buon ' + anno + '!' : 'Buon anno!'}</div><div class="augbox"></div></div>${luci()}`;
+    }
   }
   return '';
 }
@@ -442,6 +461,10 @@ function disegna() {
   }
   disegnaTimer();
   scenaOmini();
+  // ultima slide della premiazione: gli auguri girano finché resta su questa slide
+  const box = $('scena').querySelector('.augbox');
+  if (box && (!T.cicloScena || T.cicloScena.box !== box)) { fermaCiclo(T.cicloScena); T.cicloScena = creaCiclo(box, false); }
+  else if (!box && T.cicloScena) { fermaCiclo(T.cicloScena); T.cicloScena = null; }
 }
 
 // ---------------------------------------------------------------- omini sulla TV
@@ -576,7 +599,7 @@ function mezzanotte() {
   return m.getTime() + rinvio * 60000;
 }
 // Auguri dopo mezzanotte: "Buon 2027!" una volta sola, poi gli auguri a turno di ogni ospite,
-// tutti gli omini che ballano e fuochi d'artificio. Dura 3 minuti (45 secondi nella prova).
+// tutti gli omini che ballano e fuochi d'artificio. Dura 20 minuti (45 secondi nella prova).
 const AUGURI = [
   'Che il 2027 ti porti pigiami sempre più comodi', 'Dodici mesi di pisolini senza sveglia', 'Che il divano sia sempre libero per te',
   'Colazione a letto almeno una volta al mese', 'Calzini sempre in coppia, tutto l\'anno', 'Un anno morbido come le tue pantofole',
@@ -584,13 +607,19 @@ const AUGURI = [
   'Un anno pieno di risate (e di panettone avanzato)', 'Abbracci caldi come la flanella', 'Che ogni lunedì ti sembri una domenica'
 ];
 const AUGURI_BIMBI = ['Un anno pieno di giochi e di coccole', 'Tanti pigiama party e zero compiti', 'Che i mostri sotto il letto restino in vacanza', 'Un anno di storie della buonanotte'];
+function creaCiclo(box, fuochiSpessi) {
+  const A = { box, coda: [], t0: Date.now() };
+  const giro = () => prossimoAugurio(A);
+  A.avvio = setTimeout(giro, fuochiSpessi ? 2600 : 900);
+  A.iv = setInterval(giro, 6500);
+  A.fu = setInterval(() => { if ((fuochiSpessi && Date.now() - A.t0 < 60000) || Math.random() < (fuochiSpessi ? .4 : .2)) fuochi(); }, 6000);
+  return A;
+}
+function fermaCiclo(A) { if (A) { clearTimeout(A.avvio); clearInterval(A.iv); clearInterval(A.fu); } }
 function iniziaAuguri(el, anno) {
-  T.auguri = { coda: [], iv: null, fuochi: null, t0: Date.now() };
   $('stage').classList.add('auguri');
-  el.innerHTML = `<div class="aug"><div class="t pop acc aug-t">Buon ${anno}!</div><div id="augcard"></div></div>${luci()}`;
-  setTimeout(prossimoAugurio, 2600);
-  T.auguri.iv = setInterval(prossimoAugurio, 6500);
-  T.auguri.fuochi = setInterval(() => { if (Date.now() - T.auguri.t0 < 60000 || Math.random() < .4) fuochi(); }, 6000);
+  el.innerHTML = `<div class="aug"><div class="t pop acc aug-t">Buon ${anno}!</div><div class="augbox"></div></div>${luci()}`;
+  T.auguri = creaCiclo(el.querySelector('.augbox'), true);
   // tutti gli omini a ballare
   if (OM) {
     const con = T.persone.filter(p => p.presente && (p.tipo === 'bimbo' ? p.viso_path : p.foto_path));
@@ -599,17 +628,17 @@ function iniziaAuguri(el, anno) {
     OM.scena(v.map((p, i) => ({ id: p.id, x: 70 + i * (1140 / Math.max(1, v.length - 1 || 1)), fa: i % 3 ? 'balla' : 'festa', scala: .42 })));
   }
 }
-function prossimoAugurio() {
-  const A = T.auguri, box = $('augcard'); if (!A || !box) return;
+function prossimoAugurio(A) {
+  if (!A || !A.box || !A.box.isConnected) return;
   if (!A.coda.length) A.coda = T.persone.filter(p => p.presente).sort(() => Math.random() - .5);
   const p = A.coda.shift(); if (!p) return;
   const lista = p.tipo === 'bimbo' ? AUGURI_BIMBI : AUGURI;
   const frase = lista[Math.floor(Math.random() * lista.length)];
-  box.innerHTML = `<div class="augc in">${av(p, 170)}<div style="text-align:left"><div class="f" style="font-size:46px">Auguri da ${esc(nome(p))}!</div><div class="s" style="font-size:32px;margin-top:8px;max-width:680px">${esc(frase)}</div></div></div>`;
+  A.box.innerHTML = `<div class="augc in">${av(p, 170)}<div style="text-align:left"><div class="f" style="font-size:46px">Auguri da ${esc(nome(p))}!</div><div class="s" style="font-size:32px;margin-top:8px;max-width:680px">${esc(frase)}</div></div></div>`;
 }
 function fineAuguri() {
   if (!T.auguri) return;
-  clearInterval(T.auguri.iv); clearInterval(T.auguri.fuochi); T.auguri = null;
+  fermaCiclo(T.auguri); T.auguri = null;
   $('stage').classList.remove('auguri');
   chiaveOmini = ''; scenaOmini();
 }
@@ -617,7 +646,7 @@ function tickCountdown() {
   const el = $('cd'); let target, inizio;
   if (T.cdStart) { target = T.cdStart + 10000; inizio = T.cdStart; }
   else { target = mezzanotte(); inizio = target - 5 * 60000; }
-  const durata = T.cdStart ? 45000 : 180000;
+  const durata = T.cdStart ? 45000 : 20 * 60000;   // auguri: 20 minuti (45 secondi nella prova)
   const ora = Date.now(), resta = Math.ceil((target - ora) / 1000);
   const attivo = ora >= inizio && ora < target + durata;
   if (!attivo) {
