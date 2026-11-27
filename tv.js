@@ -158,7 +158,7 @@ function gruppoMusica() {
     if (['catTitle', 'catFinal', 'catWin'].includes(k)) return 'premiazione';    // i 4 premi: suspense
     if (k === 'pegno') { const pg = pegnoCorrente(s, T.serata.tv || {}); if (pg && pg.supporto === 'amore') return 'amore'; }  // dichiarazione d'amore
     if (k === 'fine') return 'festa';                                              // slide degli auguri: si balla
-    if (['famFinal', 'famWin', 'clAd', 'clFam'].includes(k)) return 'finale';      // famiglie e classifica
+    if (['famTitle', 'famFinal', 'famWin', 'clAd', 'clFam'].includes(k)) return 'finale';      // famiglie e classifica
     return 'pegni';                                                               // pegni e bimbi: si ride
   }
   return 'cena';
@@ -213,8 +213,14 @@ async function spRitorno() {   // rientro dalla pagina di Spotify con ?code=...
   catch (e) { console.warn('Spotify:', e.message); }
 }
 async function spApi(metodo, percorso, corpo) {
+  if (Date.now() < (SP.attendiFino || 0)) { const e = new Error('Spotify: troppe richieste, riprovo tra poco'); e.limite = true; throw e; }
   const tk = await spToken(); if (!tk) throw new Error('Spotify non collegato');
   const r = await fetch('https://api.spotify.com/v1' + percorso, { method: metodo, headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' }, body: corpo ? JSON.stringify(corpo) : undefined });
+  if (r.status === 429) {
+    const sec = Math.min(120, parseInt(r.headers.get('Retry-After') || '30', 10) || 30);
+    SP.attendiFino = Date.now() + sec * 1000;
+    const e = new Error('Spotify: troppe richieste, riprovo tra ' + sec + ' s'); e.limite = true; throw e;
+  }
   if (!r.ok && r.status !== 204) {
     let det = ''; try { const j = await r.json(); det = (j.error && (j.error.message || j.error.reason)) || ''; } catch (e) { /* niente */ }
     throw new Error('Spotify ' + r.status + (det ? ' – ' + det : ''));
@@ -234,8 +240,9 @@ function spPrepara() {   // carica il lettore Spotify nella pagina
     SP.player.addListener('player_state_changed', s => {
       SP.contesto = s && s.context && s.context.uri || null;
       // se Spotify sta suonando una playlist diversa da quella del momento, la corregge
-      const giusta = T.avviato && spPlaylist(gruppoMusica());
-      if (giusta && SP.contesto && idDi(SP.contesto) !== idDi(giusta) && SP.inCorso !== giusta && !(T.serata.tv && T.serata.tv.musica && T.serata.tv.musica.on === false)) musicaSpotify(gruppoMusica(), (T.serata.tv && T.serata.tv.musica) || {});
+      const giusta = T.avviato && !T.video && spPlaylist(gruppoMusica());
+      if (Date.now() < (SP.ignoraFino || 0) || Date.now() - (SP.ultimaCorrezione || 0) < 20000) return;
+      if (giusta && SP.contesto && idDi(SP.contesto) !== idDi(giusta) && SP.inCorso !== giusta && (SP.ultimaCorrezione = Date.now()) && !(T.serata.tv && T.serata.tv.musica && T.serata.tv.musica.on === false)) musicaSpotify(gruppoMusica(), (T.serata.tv && T.serata.tv.musica) || {});
     });
     SP.player.addListener('playback_error', e => avvisoSpotify('Spotify: ' + (e && e.message)));
     ['initialization_error', 'authentication_error', 'account_error'].forEach(ev => SP.player.addListener(ev, e => {
@@ -275,9 +282,19 @@ function musicaSpotify(gruppo, cfg) {
   if (SP.inCorso === uri) return;
   SP.inCorso = uri;
   const suona = () => spApi('PUT', '/me/player/play?device_id=' + SP.device, { context_uri: uri });
-  suona().catch(() => new Promise(r => setTimeout(r, 1500)).then(suona))
-    .then(() => { SP.contesto = uri; spApi('PUT', '/me/player/shuffle?state=true&device_id=' + SP.device).catch(() => {}); })
-    .catch(e => { SP.player.pause(); avvisoSpotify('La playlist "' + gruppo + '" non parte (' + e.message + '): uso gli MP3'); SP.pronto = false; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(e.message); })
+  suona().catch(e => { if (e.limite) throw e; return new Promise(r => setTimeout(r, 1500)).then(suona); })
+    .then(() => {
+      SP.contesto = uri; SP.ignoraFino = Date.now() + 6000;
+      if (!SP.shuffle) spApi('PUT', '/me/player/shuffle?state=true&device_id=' + SP.device).then(() => { SP.shuffle = true; }).catch(() => {});
+    })
+    .catch(e => {
+      if (e.limite) {      // limite di Spotify: la musica attuale continua, riprovo quando Spotify lo permette
+        avvisoSpotify(e.message);
+        clearTimeout(SP.riprova); SP.riprova = setTimeout(() => { T.musicaGruppo = null; aggiornaMusica(); }, Math.max(2000, (SP.attendiFino || 0) - Date.now() + 500));
+        return;
+      }
+      SP.player.pause(); avvisoSpotify('La playlist "' + gruppo + '" non parte (' + e.message + '): uso gli MP3'); SP.pronto = false; T.musicaGruppo = null; aggiornaMusica(); aggiornaStatoSpotify(e.message);
+    })
     .finally(() => { if (SP.inCorso === uri) SP.inCorso = null; });
 }
 
@@ -302,6 +319,7 @@ $('musica').addEventListener('ended', () => {
 });
 
 // ---------------------------------------------------------------- viste
+const PREMIO_FAM = "La Tribù del Pigiama d'Oro";   // nome del premio famiglia
 const LUNA = '<svg class="moon" viewBox="0 0 100 100" aria-hidden="true"><defs><mask id="lunaM"><rect width="100" height="100" fill="#fff"/><circle cx="66" cy="44" r="29" fill="#000"/></mask><radialGradient id="lunaG" cx="35%" cy="65%" r="70%"><stop offset="0" stop-color="#FFE08A"/><stop offset="1" stop-color="#F7B733"/></radialGradient></defs><circle cx="48" cy="56" r="36" fill="url(#lunaG)" mask="url(#lunaM)"/><path d="M27 55q4 3.5 8 0" fill="none" stroke="#7A4A12" stroke-width="2" stroke-linecap="round"/><circle cx="29" cy="64" r="3.6" fill="#FF9EB1" opacity=".7"/><path d="M33 71q4 2.5 7-1" fill="none" stroke="#7A4A12" stroke-width="1.8" stroke-linecap="round"/><defs><linearGradient id="lunaC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF6B7A"/><stop offset="1" stop-color="#D93248"/></linearGradient><linearGradient id="lunaP" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#EADFCB"/></linearGradient><radialGradient id="lunaB" cx="38%" cy="35%" r="70%"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E6DAC4"/></radialGradient></defs><path d="M19.80 28.77 L21.26 28.28 L22.52 27.65 L23.72 26.99 L24.91 26.34 L26.08 25.69 L27.25 25.06 L28.42 24.46 L29.61 23.88 L30.80 23.34 L32.00 22.82 L33.21 22.35 L34.43 21.91 L35.67 21.52 L36.91 21.16 L38.17 20.85 L39.43 20.57 L40.70 20.34 L41.97 20.15 L43.25 20.01 L44.52 19.90 L45.80 19.83 L47.08 19.81 L48.36 19.83 L49.64 19.88 L50.91 19.98 L52.20 20.01 L53.48 20.10 L54.75 20.26 L56.02 20.47 L57.28 20.76 L58.52 21.11 L59.73 21.53 L60.92 22.02 L62.08 22.59 L63.19 23.23 L64.26 23.94 L65.28 24.72 L66.24 25.58 L67.14 26.50 L67.96 27.49 L65.90 30.44 L64.75 30.18 L63.59 30.00 L62.41 29.93 L61.22 29.95 L60.03 30.06 L58.84 30.27 L57.68 30.56 L56.53 30.94 L55.41 31.41 L54.33 31.95 L53.29 32.57 L52.30 33.26 L51.35 34.01 L50.47 34.83 L49.64 35.69 L48.87 36.73 L48.18 37.83 L47.57 38.96 L47.04 40.14 L46.59 41.33 L46.22 42.55 L45.94 43.76 L45.74 44.98 L45.62 46.17 L45.58 47.34 L45.61 48.48 L45.70 49.57 L45.86 50.62 L46.07 51.60 L46.33 52.53 L46.62 53.38 L46.95 54.17 L47.31 54.88 L47.68 55.53 L48.07 56.09 L48.46 56.59 L48.86 57.03 L49.27 57.42 L49.71 57.77 L50.30 58.22Z" fill="url(#lunaC)"/><rect x="12.06" y="42.48" width="42.40" height="6.4" rx="3.2" transform="rotate(-145.0 33.26 45.68)" fill="#E0951C" opacity=".28" mask="url(#lunaM)"/><rect x="12.65" y="38.50" width="44.80" height="10" rx="5" transform="rotate(-136.0 35.05 43.50)" fill="url(#lunaP)"/><circle cx="66.93" cy="32.27" r="5.5" fill="url(#lunaB)"/></svg>';
 function luci() {
   // ghirlanda: filo che pende in 4 archi lungo tutta la base, lampadine appese che brillano a turno
@@ -364,16 +382,17 @@ function vistaPremiazione() {
         ${jolly.length ? `<div class="card in3" style="margin-top:34px;font-size:30px;font-weight:800;border-color:var(--pink)">Attenzione… ${jolly.map(id => esc(nome(pers(id)))).join(' e ')} ${jolly.length > 1 ? 'avevano' : 'aveva'} giocato il jolly!</div>` : ''}</div>`;
     }
     case 'catWin': return vistaVincitore(cat, rc);
+    case 'famTitle': return `<div class="c"><div class="s in">E il premio per…</div><div class="t in2 acc" style="font-size:96px">${PREMIO_FAM}</div><div class="s in3" style="margin-top:22px">la famiglia col pigiama più bello della serata</div></div>`;
     case 'famFinal': {
       if (!R) return attesaRisultati();
-      return `<div class="c"><div class="f in acc" style="font-size:42px">Premio famiglia</div><div class="t in" style="font-size:70px">Le finaliste</div>
+      return `<div class="c"><div class="f in acc" style="font-size:42px">${PREMIO_FAM}</div><div class="t in" style="font-size:70px">Le finaliste</div>
         <div class="fin in2">${R.famiglie.slice(0, 3).sort((a, b) => String(a.famiglia_id).localeCompare(String(b.famiglia_id))).map(x => { const f = famDi(x.famiglia_id); return `<div>${famImg(f, 300, 200)}${esc(f.nickname)}</div>`; }).join('')}</div></div>`;
     }
     case 'famWin': {
       if (!R) return attesaRisultati();
-      if (!T.rivelato) return `<div class="c"><div class="f acc" style="font-size:44px">Premio famiglia</div><div class="t pulse" style="margin-top:30px">E la famiglia vincitrice è…</div></div>`;
+      if (!T.rivelato) return `<div class="c"><div class="f acc" style="font-size:44px">${PREMIO_FAM}</div><div class="t pulse" style="margin-top:30px">E la famiglia vincitrice è…</div></div>`;
       const x = R.famiglie[0], f = famDi(x.famiglia_id), ind = R.famiglia_indovinata_da || [];
-      return `<div class="c"><div class="f acc" style="font-size:40px">Premio famiglia</div><div class="pop" style="margin-top:18px">${famImg(f, 440, 280)}</div>
+      return `<div class="c"><div class="f acc" style="font-size:40px">${PREMIO_FAM}</div><div class="pop" style="margin-top:18px">${famImg(f, 440, 280)}</div>
         <div class="t in2" style="font-size:80px;margin-top:18px">${esc(nomeFam(f))}</div><div class="s in3">Media ${Number(x.media).toFixed(2).replace('.', ',')} stelle a testa</div></div>${striscia(ind)}`;
     }
     case 'clAd': {
@@ -590,7 +609,7 @@ function entraPasso() {
   if (s.k === 'catWin' || s.k === 'famWin') rivela();
   if (s.k === 'bimbo') { suoni.fanfara(); suoni.applausi(); coriandoli(100); }
   if (s.k === 'bimbiFine' || s.k === 'fine') { suoni.fanfara(); fuochi(); }
-  if (['intro', 'catTitle', 'catFinal', 'famFinal', 'pegniIntro', 'bimbiIntro'].includes(s.k)) tono(660, 0, .3, 'triangle', .15);
+  if (['intro', 'catTitle', 'catFinal', 'famTitle', 'famFinal', 'pegniIntro', 'bimbiIntro'].includes(s.k)) tono(660, 0, .3, 'triangle', .15);
   if (s.k === 'clAd') { const n = T.ris ? Math.min(T.ris.adulti.length, 12) : 0; setTimeout(() => { suoni.tamburi(1.4); }, Math.max(0, (n - 3) * 250 + 3200)); setTimeout(() => { suoni.fanfara(); coriandoli(200); }, Math.max(0, (n - 3) * 250 + 4900)); }
   if (s.k === 'clFam') setTimeout(() => { suoni.fanfara(); coriandoli(160); }, (T.ris ? T.ris.famiglie.length - 1 : 0) * 600 + 700);
 }

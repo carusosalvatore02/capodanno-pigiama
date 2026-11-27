@@ -647,7 +647,7 @@ function vistaFamiglia() {
 function vistaRegole() {
   const premi = S.categorie.length ? S.categorie.map(c => esc(c.nome)).join(' · ') : '';
   return `<div class="card"><h3>Dress code</h3><p class="small">Pigiama obbligatorio per tutti, grandi e piccini. Ciabatte consigliate! Chi arriva vestito paga 2 pegni, estratti con la ruota.</p></div>
-    <div class="card"><h3>Premi</h3><p class="small">${premi}${premi ? ' · ' : ''}Miglior famiglia · Diploma per ogni bimbo</p></div>
+    <div class="card"><h3>Premi</h3><p class="small">${premi}${premi ? ' · ' : ''}${esc(PREMIO_FAM)} · Diploma per ogni bimbo</p></div>
     <div class="card"><h3>Pronostici e jolly</h3><p class="small">Prima delle votazioni indovini chi vince ogni premio: +5 punti per pronostico giusto. Col jolly "Vinco io!" punti su te stesso in una categoria: +10 se vinci, −5 se perdi.</p></div>
     <div class="card"><h3>Come si vota</h3><p class="small">Pagelle: da 1 a 5 stelle ai pigiami delle altre famiglie, bimbi compresi. Premi: un adulto per premio, anche della tua famiglia, ma mai te stesso e mai la stessa persona per due premi. Puoi votare un po' alla volta e confermare quando vuoi.</p></div>
     <div class="card"><h3>Classifiche</h3><p class="small">Adulti: stelle ricevute + pronostici + jolly. Famiglie: media delle stelle di tutti i membri.</p></div>
@@ -848,7 +848,7 @@ function vistaPronostici() {
           return chipPersona(p, S.g.pron[c.id] === p.id, `data-a="gpron" data-c="${c.id}" data-v="${p.id}"`, (mio && p.id !== S.me.id) || !!altrove, nota);
         }).join('')}</div></div>`;
     }).join('')}
-    <div class="card"><b>Premio famiglia</b><div class="pchips" style="margin-top:10px">${S.g.famiglie.filter(x => S.g.tutti.some(p => p.famiglia_id === x.id && p.presente)).map(x => `<button class="pchip ${S.g.pronFam === x.id ? 'on' : ''}" data-a="gpronfam" data-v="${x.id}" style="padding-left:14px"><span>${esc(x.nickname)}<small>Famiglia ${esc(x.cognome)}</small></span></button>`).join('')}</div></div>
+    <div class="card"><b>${esc(PREMIO_FAM)}</b><div class="pchips" style="margin-top:10px">${S.g.famiglie.filter(x => S.g.tutti.some(p => p.famiglia_id === x.id && p.presente)).map(x => `<button class="pchip ${S.g.pronFam === x.id ? 'on' : ''}" data-a="gpronfam" data-v="${x.id}" style="padding-left:14px"><span>${esc(x.nickname)}<small>Famiglia ${esc(x.cognome)}</small></span></button>`).join('')}</div></div>
     <p class="tiny mute">Ogni persona può essere scelta per un solo premio. Ogni scelta si salva da sola: puoi cambiare idea finché ${esc(C.ORGANIZZATORE || 'l\'organizzatore')} non chiude i pronostici.</p>`;
 }
 function vistaVotazioni() {
@@ -909,7 +909,7 @@ function vistaFine() {
   const pos = R.adulti.findIndex(a => a.persona_id === S.me.id) + 1;
   return `${io ? `<div class="card"><h3>I tuoi punti · ${pos}° posto</h3><div class="row" style="justify-content:space-between;text-align:center">${[['Pigiama', io.pigiama], ['Pronostico', segno(io.pronostico)], ['Jolly', segno(io.jolly)], ['Totale', io.totale]].map(([l, v]) => `<div><div class="f" style="font-size:26px;color:var(--acc)">${v}</div><div class="tiny mute">${l}</div></div>`).join('')}</div></div>` : ''}
     <div class="card"><h3>Vincitori</h3>${R.premi.map(c => { const p = c.vincitore_id ? pers(c.vincitore_id) : null; return `<div class="member">${p ? avatar(p, 40) : ''}<div class="grow"><div class="tiny mute">${esc(c.nome)}</div><b>${p ? esc(nomeVisto(p)) + ' ' + esc(p.cognome || '') : 'Nessun vincitore'}</b></div></div>`; }).join('')}
-      ${R.famiglia_vincitrice ? `<div class="member"><div class="grow"><div class="tiny mute">Miglior famiglia</div><b>${esc(nomeFamiglia(fam(R.famiglia_vincitrice)))}</b></div></div>` : ''}</div>
+      ${R.famiglia_vincitrice ? `<div class="member"><div class="grow"><div class="tiny mute">${esc(PREMIO_FAM)}</div><b>${esc(nomeFamiglia(fam(R.famiglia_vincitrice)))}</b></div></div>` : ''}</div>
     <div class="card" style="overflow-x:auto"><h3>Classifica adulti</h3><table class="tab"><tr><th>#</th><th>Nome</th><th class="n">Pig.</th><th class="n">Pron.</th><th class="n">Jolly</th><th class="n">Tot.</th></tr>
       ${R.adulti.map((a, i) => `<tr style="${a.persona_id === S.me.id ? 'color:var(--acc)' : ''}"><td>${i + 1}</td><td>${esc(nomeVisto(pers(a.persona_id)))}</td><td class="n">${a.pigiama}</td><td class="n">${segno(a.pronostico)}</td><td class="n">${segno(a.jolly)}</td><td class="n"><b>${a.totale}</b></td></tr>`).join('')}</table></div>`;
 }
@@ -940,6 +940,7 @@ const FASI_SPIEGA = {
   premiazione: 'Si sbloccano i risultati e parte la premiazione sulla TV.',
   fine: 'Le classifiche diventano visibili sui telefoni di tutti.'
 };
+const PREMIO_FAM = "La Tribù del Pigiama d'Oro";   // nome del premio famiglia
 const SUPPORTI = { timer60: 'timer 1 min', timer30: 'timer 30 s', pregi: 'conta pregi', karaoke: 'karaoke', mimo: 'carte film', canzone: 'carte canzoni', amore: 'canzone d\'amore in sottofondo' };
 S.adm = { sez: 'arrivi', famiglie: [], persone: [], avz: null, pegni: [], carte: [], brani: [], cat: [], caricato: false, poll: null };
 
@@ -1119,7 +1120,7 @@ function costruisciPassi() {
   const bimbi = P.filter(p => p.tipo === 'bimbo' && p.presente).sort((a, b) => a.eta - b.eta || a.nome.localeCompare(b.nome));
   if (bimbi.length) { st.push({ k: 'bimbiIntro' }); bimbi.forEach(p => st.push({ k: 'bimbo', pid: p.id })); st.push({ k: 'bimbiFine' }); }
   S.adm.cat.forEach(c => { st.push({ k: 'catTitle', c: c.id }); st.push({ k: 'catFinal', c: c.id }); st.push({ k: 'catWin', c: c.id }); });
-  st.push({ k: 'famFinal' }, { k: 'famWin' }, { k: 'clAd' }, { k: 'fine' });
+  st.push({ k: 'famTitle' }, { k: 'famFinal' }, { k: 'famWin' }, { k: 'clAd' }, { k: 'fine' });
   return st;
 }
 function etichettaPasso(s) {
@@ -1128,8 +1129,8 @@ function etichettaPasso(s) {
   return {
     intro: 'Apertura della premiazione', pegniIntro: 'I pegni', nopegni: 'Nessun pegno', pegno: `Pegno ${s.g} di 2 · ${n}`,
     bimbiIntro: 'Chiamata dei bimbi', bimbo: `Bimbo sul palco · ${n}`, bimbiFine: 'Tutti i bimbi insieme',
-    catTitle: c, catFinal: `${c} · finalisti`, catWin: `${c} · vincitore`, famFinal: 'Premio famiglia · finaliste',
-    famWin: 'Premio famiglia · vincitrice', clAd: 'Classifica adulti', clFam: 'Classifica famiglie', fine: 'Buon anno!'
+    catTitle: c, catFinal: `${c} · finalisti`, catWin: `${c} · vincitore`, famTitle: PREMIO_FAM, famFinal: PREMIO_FAM + ' · finaliste',
+    famWin: PREMIO_FAM + ' · vincitrice', clAd: 'Classifica adulti', clFam: 'Classifica famiglie', fine: 'Buon anno!'
   }[s.k] || s.k;
 }
 async function aggiornaTv(patch, altri) {
