@@ -471,12 +471,24 @@ function vistaPegno(s, tv) {
       <div class="card" style="margin-top:18px;padding:30px 26px;border-color:var(--acc)"><div class="s" style="font-size:24px">${pg.supporto === 'mimo' ? 'Il film era' : 'La canzone era'}</div><div class="t" style="font-size:64px;margin-top:10px">${esc(indovinato)}</div></div></div>` : ruotaSVG()}</div>`;
 }
 function vistaKaraoke(p, s, tv) {
-  const n = T.brani.length;
-  const col = n <= 4 ? 2 : n <= 9 ? 3 : n <= 16 ? 4 : n <= 25 ? 5 : 6;
-  const righe = Math.max(1, Math.ceil(n / col)), font = Math.max(16, Math.min(34, Math.floor(430 / righe / 1.9)));
-  return `<div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:30px 40px 84px;gap:18px">
-    <div class="row" style="gap:20px;justify-content:center">${av(p, 90)}<div><div class="f" style="font-size:44px">${esc(nome(p))} canta!</div><div class="s" style="font-size:24px">Scegliete tutti insieme la canzone</div></div></div>
-    ${n ? `<div style="flex:1;display:grid;grid-template-columns:repeat(${col},1fr);grid-auto-rows:1fr;gap:12px">${T.brani.map((b, i) => `<div class="card in" style="animation-delay:${Math.min(i, 30) * 30}ms;display:flex;align-items:center;gap:12px;padding:8px 16px;font-size:${font}px;font-weight:800${tv.karaoke === b.id ? ';border:3px solid var(--acc);color:#1B2346;background:linear-gradient(180deg,#FFD47E,#FFC145);transform:scale(1.04);box-shadow:0 0 34px rgba(255,200,87,.55)' : ''}"><span style="font-family:Fredoka;color:${tv.karaoke === b.id ? '#1B2346' : 'var(--acc)'}">${i + 1}</span><span style="line-height:1.15">${esc(b.titolo)}</span></div>`).join('')}</div>`
+  const n = T.brani.length, gap = 12;
+  const lungo = Math.max(8, ...T.brani.map(b => b.titolo.length));
+  // colonne e righe: tutti i titoli devono stare nello schermo, con il carattere più grande possibile
+  let best = null;
+  for (let col = 1; col <= 7; col++) {
+    const righe = Math.max(1, Math.ceil(n / col));
+    const cellH = (470 - gap * (righe - 1)) / righe, cellW = (1200 - gap * (col - 1)) / col - 60;
+    const perRiga = Math.ceil(lungo / 2);                       // al massimo 2 righe di testo
+    const font = Math.floor(Math.min(34, cellH / 2.7, cellW / (perRiga * .56)));
+    if (!best || font > best.font) best = { col, righe, font };
+  }
+  const { col, righe } = best, font = Math.max(13, best.font);
+  return `<div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:26px 40px 84px;gap:16px">
+    <div class="row" style="gap:20px;justify-content:center;flex:none">${av(p, 84)}<div><div class="f" style="font-size:42px">${esc(nome(p))} canta!</div><div class="s" style="font-size:22px">Scegliete tutti insieme la canzone</div></div></div>
+    ${n ? `<div style="flex:1;min-height:0;display:grid;grid-template-columns:repeat(${col},minmax(0,1fr));grid-template-rows:repeat(${righe},minmax(0,1fr));gap:${gap}px">${T.brani.map((b, i) => {
+        const sc = tv.karaoke === b.id;
+        return `<div class="card in" style="animation-delay:${Math.min(i, 30) * 30}ms;min-height:0;overflow:hidden;display:flex;align-items:center;gap:10px;padding:6px 14px;font-size:${font}px;font-weight:800${sc ? ';border:3px solid var(--acc);color:#1B2346;background:linear-gradient(180deg,#FFD47E,#FFC145);box-shadow:0 0 34px rgba(255,200,87,.55)' : ''}"><span style="font-family:Fredoka;flex:none;color:${sc ? '#1B2346' : 'var(--acc)'}">${i + 1}</span><span style="line-height:1.12;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${esc(b.titolo)}</span></div>`;
+      }).join('')}</div>`
       : '<div class="s" style="text-align:center;margin-top:60px">Nessuna canzone: aggiungile dalla Regia, nelle Impostazioni</div>'}
   </div>${luci()}`;
 }
@@ -507,14 +519,27 @@ async function controllaVideo() {
   chiudiVideo(false);
   T.video = { at: tv.karaokeAt };
   aggiornaMusica();                                   // la musica di sottofondo si ferma
-  const box = $('video'); box.style.display = 'block'; box.innerHTML = '<div id="ytplayer"></div>';
+  const box = $('video'); box.style.display = 'block';
+  const src = `https://www.youtube.com/embed/${id}?autoplay=1&controls=0&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3&fs=0&disablekb=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+  // il velo trasparente sopra il video impedisce che un tocco apra YouTube in un'altra finestra
+  box.innerHTML = `<iframe id="ytplayer" src="${src}" width="1280" height="720" style="border:0;display:block" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe><div style="position:absolute;inset:0"></div>`;
   await caricaYoutube();
   if (!T.video || T.video.at !== tv.karaokeAt) return;
+  const at = tv.karaokeAt;
   T.video.player = new YT.Player('ytplayer', {
-    width: 1280, height: 720, videoId: id,
-    playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, iv_load_policy: 3, fs: 0 },
     events: {
-      onReady: e => { try { e.target.unMute(); e.target.setVolume(100); e.target.playVideo(); } catch (x) { /* niente */ } },
+      onReady: e => {
+        try { e.target.unMute(); e.target.setVolume(100); e.target.playVideo(); } catch (x) { /* niente */ }
+        // se il browser non lascia partire il video con l'audio, lo fa partire e poi riattiva l'audio
+        setTimeout(() => {
+          if (!T.video || T.video.at !== at) return;
+          let st = -1; try { st = e.target.getPlayerState(); } catch (x) { /* niente */ }
+          if (st !== 1 && st !== 3) {
+            try { e.target.mute(); e.target.playVideo(); setTimeout(() => { try { e.target.unMute(); e.target.setVolume(100); } catch (x) { /* niente */ } }, 800); } catch (x) { /* niente */ }
+            setTimeout(() => { let s2 = -1; try { s2 = e.target.getPlayerState(); } catch (x) { /* niente */ } if (T.video && T.video.at === at && s2 !== 1 && s2 !== 3) avvisoSpotify('Il browser blocca l\'avvio automatico dei video: apri la TV con il collegamento "TV Capodanno" (vedi istruzioni)'); }, 2500);
+          }
+        }, 2500);
+      },
       onStateChange: e => { if (e.data === 0) chiudiVideo(true); },        // finito
       onError: () => { avvisoSpotify('Questo video non si può riprodurre qui (il proprietario lo blocca fuori da YouTube): scegline un altro'); chiudiVideo(true); }
     }
