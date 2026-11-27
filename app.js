@@ -1180,7 +1180,10 @@ function vistaShow() {
              <button class="btn ghost full" data-a="adcarta" data-v="${pg.supporto}">Nessuno indovina: cambia carta</button>`
            : `<button class="btn full" data-a="adcarta" data-v="${pg.supporto}">Pesca una carta</button>`}
            <button class="btn ghost full" data-a="adtimer" data-v="60">Timer 1 minuto</button>`) : ''}
-      ${pg && pg.supporto === 'amore' ? `<p class="tiny mute">Sulla TV parte una canzone d'amore in sottofondo. Quando vai avanti riprende la musica di prima.</p>` : ''}
+      ${pg && (pg.supporto === 'amore' || (!pg.supporto && /dichiarazione d.?amore/i.test(pg.testo))) ? `
+        <button class="btn full" data-a="adamorepiu" style="background:linear-gradient(180deg,#FF8FA6,#E8485A);color:#fff" ${(tv.amore || 0) >= 10 ? 'disabled' : ''}>+ amore · termometro ${Math.min(10, tv.amore || 0) * 10}%</button>
+        <button class="btn ghost full" data-a="adcheamore" style="border-color:#FF9EB1;color:#FF9EB1">${tv.cheAmore ? 'Che amore! (di nuovo)' : 'Che amore! · fine dichiarazione'}</button>
+        <p class="tiny mute">Sulla TV parte la canzone d'amore, la coppia compare con un cuore che batte e salgono i cuori. Tocca "+ amore" quando la dichiarazione scalda il pubblico: a 100% scatta la festa. A fine dichiarazione premi "Che amore!".</p>` : ''}
       ${pg && pg.supporto === 'karaoke' ? (A.brani.length
         ? (tv.karaoke ? (tv.karaokeAt
               ? `<div class="row"><button class="btn ghost grow" data-a="adkaraokepausa">${tv.karaokePausa ? 'Riprendi' : 'Pausa'}</button><button class="btn grow" data-a="adkaraokestop">Ferma e torna ai titoli</button></div>`
@@ -1222,7 +1225,7 @@ async function azioneShow(a, v, el) {
       const altri = {};
       if (tv.steps[i].k === 'fine') altri.fase = 'fine';
       else if (S.serata.fase === 'fine') altri.fase = 'premiazione';
-      await aggiornaTv({ i, spin: null, timer: null, card: null, karaoke: null, karaokeAt: null, indovinato: null }, altri);
+      await aggiornaTv({ i, spin: null, timer: null, card: null, karaoke: null, karaokeAt: null, indovinato: null, amore: 0, cheAmore: null }, altri);
       await controllaPareggio();
       return true;
     }
@@ -1230,7 +1233,7 @@ async function azioneShow(a, v, el) {
       const p = scegliPegno(tv, s); if (!p) { toast('Nessun pegno attivo'); return true; }
       const draws = { ...(tv.draws || {}), [s.pid + '-' + s.g]: p.id };
       A.carta = null;
-      await aggiornaTv({ draws, spin: { key: s.pid + '-' + s.g, pegno: p.id, at: Date.now() }, timer: null, card: null, karaoke: null, karaokeAt: null, indovinato: null });
+      await aggiornaTv({ draws, spin: { key: s.pid + '-' + s.g, pegno: p.id, at: Date.now() }, timer: null, card: null, karaoke: null, karaokeAt: null, indovinato: null, amore: 0, cheAmore: null });
       toast('La ruota gira sulla TV…');
       return true;
     }
@@ -1248,6 +1251,8 @@ async function azioneShow(a, v, el) {
       q(sb.from('carte').update({ usata: true }).eq('id', c.id)).catch(() => {});
       await aggiornaTv({ card: Date.now(), indovinato: null }); return true;
     }
+    case 'adamorepiu': await aggiornaTv({ amore: Math.min(10, (tv.amore || 0) + 1) }); return true;
+    case 'adcheamore': await aggiornaTv({ cheAmore: Date.now() }); return true;
     case 'adindovinato': {
       if (!A.carta) return true;
       await aggiornaTv({ indovinato: { testo: A.carta, at: Date.now() }, timer: null });

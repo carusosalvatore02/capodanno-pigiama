@@ -462,8 +462,73 @@ function pegnoCorrente(s, tv) {
   const inGiro = T.girando || (tv.spin && tv.spin.key === chiave && T.spinFinito !== tv.spin.at && Date.now() - tv.spin.at < 9000);
   return pid && !inGiro ? T.pegni.find(x => x.id === pid) || null : null;
 }
+// ---------------------------------------------------------------- dichiarazione d'amore
+const CUORE = (col, w) => `<svg viewBox="0 0 100 92" width="${w}" height="${w * .92}" aria-hidden="true"><path d="M50 90C22 68 2 50 2 28 2 13 14 2 28 2c9 0 17 5 22 13C55 7 63 2 72 2c14 0 26 11 26 26 0 22-20 40-48 62z" fill="${col}"/></svg>`;
+function partnerDi(p) { return T.persone.find(x => x.famiglia_id === p.famiglia_id && x.tipo === 'adulto' && x.id !== p.id) || null; }
+function luciAmore() {
+  const c = ['#FF5C7A', '#FF9EB1', '#FFD1DC', '#E8485A', '#FFB3C7'], n = 22, archi = 4;
+  const y = x => 10 + 22 * Math.sin(Math.PI * ((x * archi) % 1));
+  const cuori = Array.from({ length: n }, (_, i) => {
+    const x = (i + .5) / n, col = c[i % 5];
+    return `<span class="cuorelux" style="left:${(x * 100).toFixed(2)}%;top:${(y(x) + 2).toFixed(1)}px;animation-delay:${(i * .41 % 2.4).toFixed(2)}s;filter:drop-shadow(0 0 8px ${col})">${CUORE(col, 22)}</span>`;
+  }).join('');
+  let d = 'M0 10'; for (let k = 0; k < archi; k++) d += ` Q${(k + .5) * 1280 / archi} 54 ${(k + 1) * 1280 / archi} 10`;
+  return `<div class="lights amore"><svg viewBox="0 0 1280 64" preserveAspectRatio="none"><path d="${d}" fill="none" stroke="#5A2A44" stroke-width="3"/></svg>${cuori}</div>`;
+}
+function vistaAmore(p, s, tv) {
+  const q = partnerDi(p), livello = Math.min(10, tv.amore || 0), pieno = livello >= 10;
+  const promosso = tv.cheAmore ? (p.voce === 'f' ? 'Promossa!' : 'Promosso!') : '';
+  return `<div class="amore-scena">
+    <div class="f in amore-tit">Dichiarazione d'amore</div>
+    <div class="s in2" style="font-size:28px;margin-top:4px">${q ? `${esc(nome(p))} si dichiara a ${esc(nome(q))}` : `${esc(nome(p))} si dichiara… a tutti noi!`}</div>
+    <div class="row in2" style="gap:44px;margin-top:26px;justify-content:center">
+      <div class="amore-av">${av(p, 220)}<div class="f" style="font-size:34px">${esc(nome(p))}</div></div>
+      <div class="cuore-batte">${CUORE('url(#cuoreG)', 150).replace('<path', '<defs><linearGradient id="cuoreG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF7A93"/><stop offset="1" stop-color="#D9264A"/></linearGradient></defs><path')}</div>
+      ${q ? `<div class="amore-av">${av(q, 220)}<div class="f" style="font-size:34px">${esc(nome(q))}</div></div>` : ''}
+    </div>
+    <div class="termometro"><div class="tlabel">Termometro dell'amore</div><div class="tbar"><i style="height:${livello * 10}%"></i></div><div class="tnum">${livello * 10}%</div></div>
+    ${pieno && !promosso ? `<div class="amore-banner-wrap"><div class="amore-banner pop">Amore al 100%!</div></div>` : ''}
+    ${promosso ? `<div class="amore-banner-wrap"><div class="amore-banner pop">${promosso}</div></div>` : ''}
+  </div>${luciAmore()}`;
+}
+// cuori che salgono (canvas sopra lo sfondo, sotto gli omini)
+// due livelli: i cuori che salgono stanno DIETRO a foto e scritte, le esplosioni DAVANTI
+const CU = { el: null, ctx: null, ctx2: null, p: [], raf: null, attivo: false };
+function cuoriPrepara() {
+  if (CU.el) return;
+  const crea = z => { const c = document.createElement('canvas'); c.width = 1280; c.height = 720; c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:' + z; return c; };
+  CU.el = crea(0); CU.el2 = crea(14);
+  $('stage').insertBefore(CU.el, $('scena')); $('stage').appendChild(CU.el2);
+  CU.ctx = CU.el.getContext('2d'); CU.ctx2 = CU.el2.getContext('2d');
+}
+function cuoreDisegna(c, x, y, s, col, a) {
+  c.save(); c.translate(x, y); c.scale(s / 100, s / 100); c.globalAlpha = a; c.fillStyle = col; c.beginPath();
+  c.moveTo(0, 40); c.bezierCurveTo(-28, 18, -48, 0, -48, -22); c.bezierCurveTo(-48, -37, -36, -48, -22, -48); c.bezierCurveTo(-13, -48, -5, -43, 0, -35);
+  c.bezierCurveTo(5, -43, 13, -48, 22, -48); c.bezierCurveTo(36, -48, 48, -37, 48, -22); c.bezierCurveTo(48, 0, 28, 18, 0, 40); c.fill(); c.restore();
+}
+function cuoreNuovo(esplosione, x0, y0) {
+  const col = ['#FF5C7A', '#FF9EB1', '#E8485A', '#FFC2D1', '#FF7A93'][Math.floor(Math.random() * 5)];
+  if (esplosione) { const a = Math.random() * Math.PI * 2, v = 4 + Math.random() * 9; return { x: x0, y: y0, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 3, s: 14 + Math.random() * 30, col, vita: 1, g: .12, f: Math.random() * 6 }; }
+  return { x: Math.random() * 1280, y: 760, vx: 0, vy: -(0.6 + Math.random() * 1.4), s: 12 + Math.random() * 34, col, vita: 1, g: 0, f: Math.random() * 6, lento: true };
+}
+function cuoriGiro() {
+  const c = CU.ctx, c2 = CU.ctx2; c.clearRect(0, 0, 1280, 720); c2.clearRect(0, 0, 1280, 720);
+  if (CU.attivo && Math.random() < .07) CU.p.push(cuoreNuovo(false));
+  const t = performance.now() / 1000;
+  for (const h of CU.p) {
+    if (h.lento) { h.x += Math.sin(t * 1.2 + h.f) * .6; h.y += h.vy; if (h.y < 200) h.vita -= .006; }
+    else { h.x += h.vx; h.y += h.vy; h.vy += h.g; h.vx *= .985; h.vita -= .009; }
+    cuoreDisegna(h.lento ? c : c2, h.x, h.y, h.s, h.col, Math.max(0, Math.min(1, h.vita)) * (h.lento ? .55 : .9));
+  }
+  CU.p = CU.p.filter(h => h.vita > 0 && h.y > -60 && h.y < 800);
+  CU.raf = (CU.attivo || CU.p.length) ? requestAnimationFrame(cuoriGiro) : (c.clearRect(0, 0, 1280, 720), c2.clearRect(0, 0, 1280, 720), null);
+}
+function cuoriAvvia(on) { cuoriPrepara(); CU.attivo = on; if (on && !CU.raf && !matchMedia('(prefers-reduced-motion: reduce)').matches) CU.raf = requestAnimationFrame(cuoriGiro); }
+function cuoriEsplosione(n, x, y) { cuoriPrepara(); for (let i = 0; i < n; i++) CU.p.push(cuoreNuovo(true, x == null ? 640 : x, y == null ? 330 : y)); if (!CU.raf) CU.raf = requestAnimationFrame(cuoriGiro); }
+
 function vistaPegno(s, tv) {
   const p = pers(s.pid), pg = pegnoCorrente(s, tv);
+  if (eAmore(pg)) return vistaAmore(p, s, tv);
   const carte = pg && ['mimo', 'canzone'].includes(pg.supporto);
   const indovinato = carte && tv.indovinato && tv.indovinato.testo;
   // karaoke: i titoli occupano tutto lo schermo, così scelgono tutti
@@ -661,7 +726,7 @@ function scena() {
   if (f === 'votazioni_chiuse') return `<div class="c"><div class="t in">Votazioni <span class="acc">chiuse</span></div><div class="s in2" style="margin-top:24px">Tra poco la premiazione…</div></div>${luci()}`;
   return vistaPremiazione();
 }
-function chiaveScena() { const tv = T.serata.tv || {}; return T.serata.fase + '|' + (tv.i == null ? '' : tv.i) + '|' + (T.rivelato ? 1 : 0) + '|' + (T.sp ? T.sp.id : '') + '|' + (T.girando ? 'g' : '') + (T.spinFinito || '') + '|' + ((tv.indovinato || {}).at || ''); }
+function chiaveScena() { const tv = T.serata.tv || {}; return T.serata.fase + '|' + (tv.i == null ? '' : tv.i) + '|' + (T.rivelato ? 1 : 0) + '|' + (T.sp ? T.sp.id : '') + '|' + (T.girando ? 'g' : '') + (T.spinFinito || '') + '|' + ((tv.indovinato || {}).at || '') + '|' + (tv.cheAmore || '') + '|' + ((tv.amore || 0) >= 10 ? 'pieno' : ''); }
 function disegna() {
   if (T.girando) return;
   // ridisegna solo se qualcosa è cambiato: altrimenti le animazioni d'ingresso ripartono di continuo
@@ -674,6 +739,9 @@ function disegna() {
   }
   disegnaTimer();
   scenaOmini();
+  // dichiarazione d'amore: sfondo romantico e cuori che salgono
+  const romantico = !!$('scena').querySelector('.amore-scena');
+  $('stage').classList.toggle('romantico', romantico); cuoriAvvia(romantico);
   // ultima slide della premiazione: gli auguri girano finché resta su questa slide
   const box = $('scena').querySelector('.augbox');
   if (box && (!T.cicloScena || T.cicloScena.box !== box)) { fermaCiclo(T.cicloScena); T.cicloScena = creaCiclo(box, false); }
@@ -703,7 +771,12 @@ function scenaOmini() {
   } else if (s) {
     chiave += '|' + tv.i + '|' + (T.rivelato ? 1 : 0) + '|' + (T.sp ? T.sp.id : '');
     const ha = id => conFaccia.some(p => p.id === id);
-    if (s.k === 'bimbo' && ha(s.pid)) { T.terra = 648; lista = [{ id: s.pid, x: 160, fa: 'balla', scala: .8 }, { id: s.pid, x: 1120, fa: 'balla', scala: .8 }]; }
+    const pgAm = s.k === 'pegno' ? pegnoCorrente(s, tv) : null;
+    if (eAmore(pgAm)) {
+      const p = pers(s.pid), q = partnerDi(p);
+      chiave += '|amore';
+      T.terra = 648; lista = [p, q].filter(x => x && ha(x.id)).map((x, i) => ({ id: x.id, x: i ? 760 : 520, fa: 'balla', scala: .55 }));
+    } else if (s.k === 'bimbo' && ha(s.pid)) { T.terra = 648; lista = [{ id: s.pid, x: 160, fa: 'balla', scala: .8 }, { id: s.pid, x: 1120, fa: 'balla', scala: .8 }]; }
     else if (s.k === 'bimbiFine') { T.terra = 648; lista = presenti.filter(p => p.tipo === 'bimbo').slice(0, 8).map((p, i, a) => ({ id: p.id, x: 120 + i * (1040 / Math.max(1, a.length - 1 || 1)), fa: 'festa', scala: .5 })); }
     else if (s.k === 'catFinal' && R) { T.terra = 648; const rc = R.premi.find(x => x.categoria_id === s.c); lista = (rc ? rc.classifica.slice(0, 3) : []).filter(x => ha(x.persona_id)).map((x, i) => ({ id: x.persona_id, x: 90 + i * 110, fa: 'saltella', scala: .42 })); }
     else if (s.k === 'catWin' && R && T.rivelato) { T.terra = 648; const rc = R.premi.find(x => x.categoria_id === s.c); if (rc && rc.vincitore_id && ha(rc.vincitore_id)) lista = [{ id: rc.vincitore_id, x: 170, fa: 'balla', scala: .75 }, { id: rc.vincitore_id, x: 1110, fa: 'festa', scala: .75 }]; }
@@ -799,6 +872,12 @@ async function suCambioSerata(nuova) {
   if (cdN.ora && cdN.ora !== cdP.ora) { T.cdStart = Date.now(); T.cdChiuso = null; }
   if (cambiataFase) aggiornaMusica();
   if (JSON.stringify(tvP.musica) !== JSON.stringify(tvN.musica)) aggiornaMusica();
+  // dichiarazione d'amore: termometro e "Che amore!"
+  if ((tvN.amore || 0) > (tvP.amore || 0)) {
+    cuoriEsplosione(10, 1150, 300 + (10 - Math.min(10, tvN.amore)) * 28); tono(880 + tvN.amore * 40, 0, .25, 'sine', .12);
+    if (tvN.amore >= 10 && (tvP.amore || 0) < 10) { suoni.applausi(); cuoriEsplosione(70); }
+  }
+  if (tvN.cheAmore && tvN.cheAmore !== tvP.cheAmore) { suoni.applausi(); cuoriEsplosione(90); setTimeout(() => cuoriEsplosione(50, 300, 300), 500); setTimeout(() => cuoriEsplosione(50, 980, 300), 900); }
   // titolo indovinato nel mimo / indovina la canzone
   if (tvN.indovinato && (!tvP.indovinato || tvN.indovinato.at !== tvP.indovinato.at)) { suoni.applausi(); coriandoli(160); }
   controllaVideo();

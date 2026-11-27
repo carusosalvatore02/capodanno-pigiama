@@ -70,6 +70,28 @@ input.txt{padding:13px 14px;border-radius:12px;border:1px solid var(--line);back
 .err{color:var(--bad);font-weight:700}
 .karaoke a{color:#1B2346;background:var(--acc);text-decoration:none;border-radius:16px;padding:16px 28px;font-weight:800;font-size:28px;display:inline-block}
 @media (prefers-reduced-motion:reduce){.in,.in2,.in3,.pop,.pulse,.scorri,.lights i{animation:none}}
+
+/* dichiarazione d'amore */
+#stage::before{content:'';position:absolute;inset:0;z-index:0;opacity:0;transition:opacity 1.4s ease;pointer-events:none;
+  background:radial-gradient(70% 60% at 50% 35%,rgba(255,120,160,.35),rgba(255,120,160,0) 70%),linear-gradient(180deg,#4A2152 0%,#2B1538 100%)}
+#stage.romantico::before{opacity:1}
+.amore-scena{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;padding-top:34px;text-align:center}
+.amore-tit{font-size:66px;color:#FF9EB1;text-shadow:0 0 30px rgba(255,92,122,.55)}
+.amore-av{display:flex;flex-direction:column;align-items:center;gap:12px}
+.amore-av .av{border-color:#FF9EB1;box-shadow:0 0 40px rgba(255,92,122,.45)}
+.cuore-batte{animation:batte 1.1s ease-in-out infinite;filter:drop-shadow(0 0 26px rgba(255,60,100,.7))}
+@keyframes batte{0%,100%{transform:scale(1)}15%{transform:scale(1.14)}30%{transform:scale(.98)}45%{transform:scale(1.08)}}
+.termometro{position:absolute;right:46px;top:150px;display:flex;flex-direction:column;align-items:center;gap:8px;width:120px}
+.termometro .tlabel{font-weight:800;font-size:16px;color:#FFD1DC;line-height:1.1}
+.termometro .tbar{width:38px;height:300px;border-radius:19px;background:rgba(255,246,229,.12);border:2px solid rgba(255,158,177,.5);overflow:hidden;display:flex;align-items:flex-end}
+.termometro .tbar i{display:block;width:100%;background:linear-gradient(0deg,#D9264A,#FF9EB1);border-radius:17px;transition:height .6s cubic-bezier(.2,.9,.3,1.2)}
+.termometro .tnum{font-family:Fredoka;font-weight:700;font-size:30px;color:#FF9EB1}
+.amore-banner-wrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform:rotate(-6deg);z-index:5;pointer-events:none;animation:sparisce .8s 4s forwards}
+@keyframes sparisce{to{opacity:0;visibility:hidden}}
+.amore-banner{font-family:Fredoka;font-weight:700;font-size:120px;color:#fff;background:linear-gradient(180deg,#FF7A93,#D9264A);padding:10px 50px;border-radius:30px;box-shadow:0 20px 60px rgba(120,10,40,.6)}
+.lights.amore{background:linear-gradient(180deg,rgba(90,30,70,0),rgba(90,30,70,.6) 55%,#4A1E3E)}
+.cuorelux{position:absolute;transform:translateX(-50%);animation:brilla 2.4s ease-in-out infinite;line-height:0}
+@media (prefers-reduced-motion:reduce){.cuore-batte,.cuorelux{animation:none}}
 </style>
 </head>
 <body>
