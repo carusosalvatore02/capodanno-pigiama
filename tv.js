@@ -136,6 +136,14 @@ async function caricaDati() {
   await caricaRisultati();
   await caricaSpareggio();
 }
+// pegni e brani karaoke riletti durante la serata (se li modifichi dalla Regia la TV li vede subito)
+async function aggiornaElenchi() {
+  try {
+    const [pegni, brani] = await Promise.all([q(sb.from('pegni').select('*').order('id')), q(sb.from('brani_karaoke').select('*').order('ordine'))]);
+    T.pegni = pegni; T.brani = brani;
+  } catch (e) { console.warn(e); }
+}
+const eAmore = pg => !!pg && (pg.supporto === 'amore' || (!pg.supporto && /dichiarazione d.?amore/i.test(pg.testo || '')));
 async function caricaRisultati() {
   if (!['premiazione', 'fine'].includes(T.serata.fase)) { T.ris = null; return; }
   try { T.ris = await q(sb.rpc('risultati')); } catch (e) { console.warn(e); T.ris = null; }
@@ -156,7 +164,7 @@ function gruppoMusica() {
   if (f === 'premiazione') {
     const s = passoCorrente(), k = s && s.k;
     if (['catTitle', 'catFinal', 'catWin'].includes(k)) return 'premiazione';    // i 4 premi: suspense
-    if (k === 'pegno') { const pg = pegnoCorrente(s, T.serata.tv || {}); if (pg && pg.supporto === 'amore') return 'amore'; }  // dichiarazione d'amore
+    if (k === 'pegno' && eAmore(pegnoCorrente(s, T.serata.tv || {}))) return 'amore';  // dichiarazione d'amore
     if (k === 'fine') return 'festa';                                              // slide degli auguri: si balla
     if (['famTitle', 'famFinal', 'famWin', 'clAd', 'clFam'].includes(k)) return 'finale';      // famiglie e classifica
     return 'pegni';                                                               // pegni e bimbi: si ride
@@ -695,8 +703,12 @@ async function suCambioSerata(nuova) {
   }
   const passoP = tvP.steps ? tvP.i : -1, passoN = tvN.steps ? tvN.i : -1;
   const cambioPasso = passoP !== passoN || JSON.stringify(tvP.steps) !== JSON.stringify(tvN.steps);
-  if (cambioPasso) { if (!T.ris && ['premiazione', 'fine'].includes(nuova.fase)) await caricaRisultati(); entraPasso(); aggiornaMusica(); }
-  if (tvN.spin && (!tvP.spin || tvN.spin.at !== tvP.spin.at) && !cambioPasso) { disegna(); giraRuota(tvN.spin); }
+  if (cambioPasso) {
+    if (!T.ris && ['premiazione', 'fine'].includes(nuova.fase)) await caricaRisultati();
+    const sp = passoCorrente(); if (sp && sp.k === 'pegno') await aggiornaElenchi();
+    entraPasso(); aggiornaMusica();
+  }
+  if (tvN.spin && (!tvP.spin || tvN.spin.at !== tvP.spin.at) && !cambioPasso) { aggiornaElenchi(); disegna(); giraRuota(tvN.spin); }
   else if (!T.girando) disegna();
   if (tvN.timer && (!tvP.timer || tvN.timer.id !== tvP.timer.id)) avviaTimer(tvN.timer);
   else if (tvN.timer && T.timer && tvN.timer.count !== T.timer.count) {
