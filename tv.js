@@ -281,11 +281,12 @@ function musicaSpotify(gruppo, cfg) {
   if (idDi(SP.contesto) === idDi(uri)) { SP.player.resume(); return; }
   if (SP.inCorso === uri) return;
   SP.inCorso = uri;
-  const suona = () => spApi('PUT', '/me/player/play?device_id=' + SP.device, { context_uri: uri });
+  // sempre dal primo brano della playlist, in ordine
+  const suona = () => (SP.shuffleSpento ? Promise.resolve() : spApi('PUT', '/me/player/shuffle?state=false&device_id=' + SP.device).then(() => { SP.shuffleSpento = true; }).catch(e => { if (e.limite) throw e; }))
+    .then(() => spApi('PUT', '/me/player/play?device_id=' + SP.device, { context_uri: uri, offset: { position: 0 }, position_ms: 0 }));
   suona().catch(e => { if (e.limite) throw e; return new Promise(r => setTimeout(r, 1500)).then(suona); })
     .then(() => {
       SP.contesto = uri; SP.ignoraFino = Date.now() + 6000;
-      if (!SP.shuffle) spApi('PUT', '/me/player/shuffle?state=true&device_id=' + SP.device).then(() => { SP.shuffle = true; }).catch(() => {});
     })
     .catch(e => {
       if (e.limite) {      // limite di Spotify: la musica attuale continua, riprovo quando Spotify lo permette
