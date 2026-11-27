@@ -1057,7 +1057,7 @@ function adminImpostazioni() {
   <div class="card"><h3>Carte del mimo (film)</h3>${lista('mimo')}<div class="row" style="margin-top:8px"><input type="text" id="nuova-mimo" placeholder="Titolo del film"><button class="btn" data-a="adcartaadd" data-v="mimo">+</button></div></div>
   <div class="card"><h3>Carte "Indovina la canzone"</h3>${lista('canzone')}<div class="row" style="margin-top:8px"><input type="text" id="nuova-canzone" placeholder="Titolo della canzone"><button class="btn" data-a="adcartaadd" data-v="canzone">+</button></div></div>
   <div class="card"><h3>Karaoke</h3>${A.brani.map(b => `<div class="member"><span class="grow small"><b>${esc(b.titolo)}</b><br><span class="tiny mute">${esc(b.url)}</span></span><button class="chip" data-a="adbranodel" data-v="${b.id}" aria-label="Elimina">✕</button></div>`).join('') || '<p class="tiny mute">Nessun brano.</p>'}
-    <div class="col" style="margin-top:8px"><input type="text" id="brano-titolo" placeholder="Titolo (es. Jingle Bells)"><input type="text" id="brano-url" inputmode="url" placeholder="Link YouTube della base karaoke"><button class="btn ghost full" data-a="adbranoadd">+ Aggiungi brano</button></div></div>
+    <div class="col" style="margin-top:8px"><input type="text" id="brano-titolo" placeholder="Titolo (es. Jingle Bells)"><input type="text" id="brano-url" placeholder="Nome del file video (facoltativo)"><span class="tiny mute">Il video va nella cartella karaoke del portatile della TV. Se il file si chiama come la canzone (es. "Bella ciao.mp4") puoi lasciare vuoto il secondo campo.</span><button class="btn ghost full" data-a="adbranoadd">+ Aggiungi brano</button></div></div>
   <div class="card col"><h3>Dopo la festa</h3><p class="small mute">Cancella definitivamente tutte le foto (visi, famiglie, bimbi).</p><button class="btn danger full" data-a="adcancellafoto">${S.adm.confermaFoto ? 'Tocca di nuovo per cancellare TUTTO' : 'Cancella tutte le foto'}</button></div>`;
 }
 function sheetAdmin(s) {
@@ -1409,7 +1409,7 @@ async function azioneAdmin(a, v, el) {
     case 'adcartadel': await q(sb.from('carte').delete().eq('id', +v)); A.carte = A.carte.filter(c => c.id !== +v); return true;
     case 'adbranoadd': {
       const t = document.getElementById('brano-titolo').value.trim(), u = document.getElementById('brano-url').value.trim();
-      if (!t || !/^https?:\/\//.test(u)) { toast('Serve il titolo e un link che inizi con https://'); return true; }
+      if (!t) { toast('Scrivi il titolo della canzone'); return true; }
       await q(sb.from('brani_karaoke').insert({ titolo: t, url: u, ordine: A.brani.length + 1 }));
       A.brani = await q(sb.from('brani_karaoke').select('*').order('ordine')); toast('Brano aggiunto'); return true;
     }

@@ -501,6 +501,75 @@ function vistaKaraoke(p, s, tv) {
   </div>${luci()}`;
 }
 
+// ---------------------------------------------------------------- video karaoke dal computer (cartella locale)
+// Una volta sola si sceglie la cartella dei video sul portatile: la TV la ricorda.
+// Ogni video si chiama come la canzone (es. "Bella ciao.mp4"); in Regia, nel brano, puoi anche scrivere il nome del file.
+const kv = (() => {
+  let p; const db = () => p || (p = new Promise((res, rej) => { const r = indexedDB.open('pigiama-tv', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }));
+  return {
+    get: async k => { try { const d = await db(); return await new Promise(res => { const x = d.transaction('kv').objectStore('kv').get(k); x.onsuccess = () => res(x.result); x.onerror = () => res(null); }); } catch (e) { return null; } },
+    set: async (k, v) => { try { const d = await db(); await new Promise(res => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = res; tx.onerror = res; }); } catch (e) { /* niente */ } }
+  };
+})();
+const normNome = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\.(mp4|webm|m4v|mov|mkv)$/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+T.videoLocali = null;
+async function leggiCartella(h) {
+  const m = {};
+  for await (const [nome, e] of h.entries()) if (e.kind === 'file' && /\.(mp4|webm|m4v|mov)$/i.test(nome)) m[normNome(nome)] = e;
+  T.videoLocali = m; T.cartellaNome = h.name;
+}
+async function preparaCartella() { T.cartellaHandle = await kv.get('cartella-karaoke'); if (T.cartellaHandle) await collegaCartella(false); else aggiornaStatoCartella(); }
+async function collegaCartella(conTocco) {
+  const h = T.cartellaHandle; if (!h) return aggiornaStatoCartella();
+  try {
+    let perm = await h.queryPermission({ mode: 'read' });
+    if (perm !== 'granted' && conTocco) perm = await h.requestPermission({ mode: 'read' });
+    if (perm === 'granted') await leggiCartella(h);
+  } catch (e) { console.warn(e); }
+  aggiornaStatoCartella();
+}
+async function scegliCartella() {
+  try {
+    const h = await window.showDirectoryPicker({ id: 'karaoke', mode: 'read' });
+    T.cartellaHandle = h; await kv.set('cartella-karaoke', h); await leggiCartella(h);
+  } catch (e) { /* annullato */ }
+  aggiornaStatoCartella();
+}
+function fileDelBrano(b) {
+  const m = T.videoLocali; if (!m) return null;
+  const daUrl = b.url && !/^https?:/i.test(b.url) ? normNome(b.url) : null;
+  if (daUrl && m[daUrl]) return m[daUrl];
+  const t = normNome(b.titolo); if (m[t]) return m[t];
+  const k = Object.keys(m).find(x => x.includes(t) || (x.length > 3 && t.includes(x)));
+  return k ? m[k] : null;
+}
+function aggiornaStatoCartella() {
+  const el = $('kstato'); if (!el) return;
+  if (!('showDirectoryPicker' in window)) { el.innerHTML = '<span style="font-size:15px">Per i video karaoke dal computer serve Chrome</span>'; return; }
+  if (T.videoLocali) {
+    const manca = T.brani.filter(b => !fileDelBrano(b));
+    el.innerHTML = `<span class="acc">Video karaoke</span>: cartella "${esc(T.cartellaNome)}" · ${T.brani.length - manca.length}/${T.brani.length} canzoni con il video
+      ${manca.length ? `<div style="font-size:14px;opacity:.85;margin-top:4px">Senza video: ${manca.map(b => esc(b.titolo)).join(' · ')}</div>` : ''}
+      <div><button class="btn ghost" id="kcartella" style="margin-top:8px;min-height:40px;font-size:15px">Cambia cartella</button></div>`;
+  } else if (T.cartellaHandle) {
+    el.innerHTML = 'Video karaoke: premi "Avvia schermo TV" e consenti l\'accesso alla cartella';
+  } else {
+    el.innerHTML = '<button class="btn ghost" id="kcartella">Scegli la cartella dei video karaoke</button>';
+  }
+  const b = $('kcartella'); if (b) b.onclick = scegliCartella;
+}
+async function suonaVideoLocale(fh, at) {
+  const file = await fh.getFile(); if (!T.video || T.video.at !== at) return;
+  const url = URL.createObjectURL(file);
+  const box = $('video'); box.style.display = 'block';
+  box.innerHTML = `<video id="kvideo" src="${url}" playsinline style="width:1280px;height:720px;object-fit:contain;background:#000;display:block"></video>`;
+  const v = $('kvideo'); T.video.el = v; T.video.url = url;
+  v.onended = () => chiudiVideo(true);
+  v.onerror = () => { avvisoSpotify('Questo video non si apre: prova a convertirlo in MP4'); chiudiVideo(true); };
+  v.volume = 1;
+  v.play().catch(() => avvisoSpotify('Il browser blocca l\'audio: premi una volta "Avvia schermo TV" sul portatile'));
+}
+
 // ---------------------------------------------------------------- video karaoke a tutto schermo (YouTube)
 function idYoutube(u) { const m = String(u || '').match(/(?:youtu\.be\/|v=|embed\/|shorts\/|live\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; }
 function caricaYoutube() {
@@ -520,10 +589,19 @@ async function controllaVideo() {
   if (T.video && T.video.at === tv.karaokeAt) {         // pausa / riprendi dalla Regia
     const pl = T.video.player;
     if (pl && pl.pauseVideo) { try { tv.karaokePausa ? pl.pauseVideo() : pl.playVideo(); } catch (e) { /* niente */ } }
+    if (T.video.el) { tv.karaokePausa ? T.video.el.pause() : T.video.el.play().catch(() => {}); }
+    return;
+  }
+  const locale = fileDelBrano(vuole);
+  if (locale) {
+    chiudiVideo(false);
+    T.video = { at: tv.karaokeAt };
+    aggiornaMusica();
+    suonaVideoLocale(locale, tv.karaokeAt).catch(e => { avvisoSpotify('Video non leggibile: ' + e.message); chiudiVideo(true); });
     return;
   }
   const id = idYoutube(vuole.url);
-  if (!id) { avvisoSpotify('Il link di "' + vuole.titolo + '" non è un video YouTube valido'); T.videoFinito = tv.karaokeAt; return; }
+  if (!id) { avvisoSpotify(T.videoLocali ? 'Nella cartella non c\'è il video di "' + vuole.titolo + '"' : 'Collega la cartella dei video karaoke dalla schermata iniziale della TV'); T.videoFinito = tv.karaokeAt; return; }
   chiudiVideo(false);
   T.video = { at: tv.karaokeAt };
   aggiornaMusica();                                   // la musica di sottofondo si ferma
@@ -557,6 +635,7 @@ function chiudiVideo(finito) {
   const v = T.video; if (!v) return;
   if (finito) T.videoFinito = v.at;
   try { v.player && v.player.destroy(); } catch (e) { /* niente */ }
+  try { if (v.el) { v.el.pause(); v.el.removeAttribute('src'); } if (v.url) URL.revokeObjectURL(v.url); } catch (e) { /* niente */ }
   T.video = null;
   const box = $('video'); box.style.display = 'none'; box.innerHTML = '';
   aggiornaMusica();                                   // riprende la musica di prima
@@ -822,10 +901,11 @@ addEventListener('resize', adatta);
 function schermataAvvio(msg) {
   $('start').style.display = 'flex';
   $('start').innerHTML = `<div style="width:130px;height:130px">${LUNA}</div><div class="t" style="font-size:56px">Capodanno <span class="acc">in Pigiama</span></div><div class="s" style="font-size:24px">Schermo TV</div>
-    ${msg || ''}<button class="btn" id="avvia">Avvia schermo TV</button><div id="spstato" class="s" style="font-size:18px"></div>
+    ${msg || ''}<button class="btn" id="avvia">Avvia schermo TV</button><div id="spstato" class="s" style="font-size:18px"></div><div id="kstato" class="s" style="font-size:18px;max-width:900px"></div>
     <p class="s" style="font-size:16px;max-width:560px">Il tocco serve a sbloccare suoni e musica. Poi lo schermo va da solo: si comanda tutto dal telefono, nella scheda Regia.</p>`;
-  aggiornaStatoSpotify(); spPrepara();
+  aggiornaStatoSpotify(); spPrepara(); preparaCartella();
   $('avvia').onclick = async () => {
+    if (T.cartellaHandle && !T.videoLocali) collegaCartella(true);   // chiede il permesso alla cartella con questo tocco
     ac(); suoni.ding();
     if (SP.player && SP.player.activateElement) SP.player.activateElement();   // il browser vuole un tocco per far suonare Spotify
     try { await document.documentElement.requestFullscreen(); } catch (e) { /* facoltativo */ }
