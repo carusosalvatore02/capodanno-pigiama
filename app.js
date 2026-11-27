@@ -940,7 +940,7 @@ const FASI_SPIEGA = {
   premiazione: 'Si sbloccano i risultati e parte la premiazione sulla TV.',
   fine: 'Le classifiche diventano visibili sui telefoni di tutti.'
 };
-const SUPPORTI = { timer60: 'timer 1 min', timer30: 'timer 30 s', pregi: 'conta pregi', karaoke: 'karaoke', mimo: 'carte film', canzone: 'carte canzoni' };
+const SUPPORTI = { timer60: 'timer 1 min', timer30: 'timer 30 s', pregi: 'conta pregi', karaoke: 'karaoke', mimo: 'carte film', canzone: 'carte canzoni', amore: 'canzone d\'amore in sottofondo' };
 S.adm = { sez: 'arrivi', famiglie: [], persone: [], avz: null, pegni: [], carte: [], brani: [], cat: [], caricato: false, poll: null };
 
 async function caricaAdmin() {
@@ -1171,9 +1171,22 @@ function vistaShow() {
       ${pg && pg.supporto === 'timer60' ? `<button class="btn ghost full" data-a="adtimer" data-v="60">Timer 1 minuto</button>` : ''}
       ${pg && pg.supporto === 'timer30' ? `<button class="btn ghost full" data-a="adtimer" data-v="30">Timer 30 secondi</button>` : ''}
       ${pg && pg.supporto === 'pregi' ? `<button class="btn ghost full" data-a="adtimer" data-v="30" data-t="10">Avvia 30 secondi</button><button class="btn full" data-a="adpiu" style="background:var(--ok)">+1 pregio${tv.timer ? ` (${tv.timer.count || 0}/10)` : ''}</button>` : ''}
-      ${pg && ['mimo', 'canzone'].includes(pg.supporto) ? `${A.carta ? `<div class="card" style="border-color:var(--pink)"><div class="tiny mute">Solo tu vedi la carta</div><div class="f" style="font-size:24px">${esc(A.carta)}</div></div>` : ''}
-        <button class="btn ghost full" data-a="adcarta" data-v="${pg.supporto}">${A.carta ? 'Cambia carta' : 'Pesca una carta'}</button><button class="btn ghost full" data-a="adtimer" data-v="60">Timer 1 minuto</button>` : ''}
-      ${pg && pg.supporto === 'karaoke' ? (A.brani.length ? A.brani.map(b => `<button class="opt ${tv.karaoke === b.id ? 'on' : ''}" data-a="adkaraoke" data-v="${b.id}"><span class="grow"><b>${esc(b.titolo)}</b></span></button>`).join('') + '<p class="tiny mute">I bimbi scelgono, tu tocchi il brano: sulla TV compare il pulsante per aprire la base.</p>' : '<p class="small mute">Nessun brano karaoke: aggiungili nelle Impostazioni.</p>') : ''}
+      ${pg && ['mimo', 'canzone'].includes(pg.supporto) ? (tv.indovinato
+        ? `<div class="card" style="border-color:var(--ok)"><div class="tiny mute">Indovinato! Sulla TV si vede il titolo</div><div class="f" style="font-size:24px">${esc(tv.indovinato.testo)}</div></div>
+           <button class="btn ghost full" data-a="adcarta" data-v="${pg.supporto}">Un'altra carta</button>`
+        : `${A.carta ? `<div class="card" style="border-color:var(--pink)"><div class="tiny mute">Solo tu vedi la carta</div><div class="f" style="font-size:24px">${esc(A.carta)}</div></div>` : ''}
+           ${A.carta ? `<button class="btn full" data-a="adindovinato" style="background:var(--ok)">Ha indovinato! Mostra il titolo</button>
+             <button class="btn ghost full" data-a="adcarta" data-v="${pg.supporto}">Nessuno indovina: cambia carta</button>`
+           : `<button class="btn full" data-a="adcarta" data-v="${pg.supporto}">Pesca una carta</button>`}
+           <button class="btn ghost full" data-a="adtimer" data-v="60">Timer 1 minuto</button>`) : ''}
+      ${pg && pg.supporto === 'amore' ? `<p class="tiny mute">Sulla TV parte una canzone d'amore in sottofondo. Quando vai avanti riprende la musica di prima.</p>` : ''}
+      ${pg && pg.supporto === 'karaoke' ? (A.brani.length
+        ? (tv.karaoke ? (tv.karaokeAt
+              ? `<div class="row"><button class="btn ghost grow" data-a="adkaraokepausa">${tv.karaokePausa ? 'Riprendi' : 'Pausa'}</button><button class="btn grow" data-a="adkaraokestop">Ferma e torna ai titoli</button></div>`
+              : `<button class="btn full" data-a="adkaraokevia">Avvia il video: ${esc((A.brani.find(b => b.id === tv.karaoke) || {}).titolo || '')}</button>`) : '')
+          + A.brani.map((b, i) => `<button class="opt ${tv.karaoke === b.id ? 'on' : ''}" data-a="adkaraoke" data-v="${b.id}"><span class="grow"><b>${i + 1}. ${esc(b.titolo)}</b></span>${tv.karaoke === b.id ? `<span class="tag">${tv.karaokeAt ? 'In onda' : 'Scelta'}</span>` : ''}</button>`).join('')
+          + '<p class="tiny mute">Sulla TV ci sono tutti i titoli. 1) Tocca la canzone scelta: sulla TV si illumina. 2) Premi "Avvia il video": parte a tutto schermo. A fine canzone la TV torna ai titoli da sola.</p>'
+        : '<p class="small mute">Nessun brano karaoke: aggiungili nelle Impostazioni.</p>') : ''}
     </div>`;
   }
   if (s.k === 'catWin') {
@@ -1208,7 +1221,7 @@ async function azioneShow(a, v, el) {
       const altri = {};
       if (tv.steps[i].k === 'fine') altri.fase = 'fine';
       else if (S.serata.fase === 'fine') altri.fase = 'premiazione';
-      await aggiornaTv({ i, spin: null, timer: null, card: null, karaoke: null }, altri);
+      await aggiornaTv({ i, spin: null, timer: null, card: null, karaoke: null, karaokeAt: null, indovinato: null }, altri);
       await controllaPareggio();
       return true;
     }
@@ -1216,7 +1229,7 @@ async function azioneShow(a, v, el) {
       const p = scegliPegno(tv, s); if (!p) { toast('Nessun pegno attivo'); return true; }
       const draws = { ...(tv.draws || {}), [s.pid + '-' + s.g]: p.id };
       A.carta = null;
-      await aggiornaTv({ draws, spin: { key: s.pid + '-' + s.g, pegno: p.id, at: Date.now() }, timer: null, card: null, karaoke: null });
+      await aggiornaTv({ draws, spin: { key: s.pid + '-' + s.g, pegno: p.id, at: Date.now() }, timer: null, card: null, karaoke: null, karaokeAt: null, indovinato: null });
       toast('La ruota gira sulla TV…');
       return true;
     }
@@ -1232,9 +1245,17 @@ async function azioneShow(a, v, el) {
       const c = pool[Math.floor(Math.random() * pool.length)];
       A.carta = c.testo; c.usata = true;
       q(sb.from('carte').update({ usata: true }).eq('id', c.id)).catch(() => {});
-      await aggiornaTv({ card: Date.now() }); return true;
+      await aggiornaTv({ card: Date.now(), indovinato: null }); return true;
     }
-    case 'adkaraoke': await aggiornaTv({ karaoke: +v }); return true;
+    case 'adindovinato': {
+      if (!A.carta) return true;
+      await aggiornaTv({ indovinato: { testo: A.carta, at: Date.now() }, timer: null });
+      toast('Titolo svelato sulla TV'); return true;
+    }
+    case 'adkaraoke': await aggiornaTv({ karaoke: +v, karaokeAt: null, karaokePausa: false }); return true;
+    case 'adkaraokevia': await aggiornaTv({ karaokeAt: Date.now(), karaokePausa: false }); toast('Il video parte sulla TV'); return true;
+    case 'adkaraokepausa': await aggiornaTv({ karaokePausa: !tv.karaokePausa }); return true;
+    case 'adkaraokestop': await aggiornaTv({ karaoke: null, karaokeAt: null, karaokePausa: false }); return true;
     case 'adspareggio': {
       const p = A.pareggio; if (!p) return true;
       await q(sb.rpc('avvia_spareggio', { p_categoria: p.cat, p_candidati: p.candidati, p_secondi: 30 }));

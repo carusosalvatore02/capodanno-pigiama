@@ -43,6 +43,7 @@ window.CONFIG = {
       pegni:       'https://open.spotify.com/playlist/48I6rPdTiVm3fyPRUUaa4f',
       premiazione: 'https://open.spotify.com/playlist/2V7ZRCHDQ11JvNZF4Ghxzc',
       finale:      'https://open.spotify.com/playlist/5uoSkNuNNoDJNDutYwilb5',
+      amore:       '',   // canzoni d'amore per il pegno della dichiarazione
       festa:       'https://open.spotify.com/playlist/4XZRMPE0wRltzv2U16Y3C4'
     }
   },
@@ -55,6 +56,7 @@ window.CONFIG = {
     pegni:       ['musica/pegni.mp3'],        // premiazione: pegni e bimbi (allegra, si ride)
     premiazione: ['musica/premiazione.mp3'],  // premiazione: i 4 premi (suspense)
     finale:      ['musica/finale.mp3'],       // premiazione: famiglie e classifica
+    amore:       ['musica/amore.mp3'],        // pegno della dichiarazione d'amore
     festa:       ['musica/festa.mp3']         // dopo mezzanotte e a fine serata
   }
 };

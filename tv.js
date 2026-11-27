@@ -156,6 +156,7 @@ function gruppoMusica() {
   if (f === 'premiazione') {
     const s = passoCorrente(), k = s && s.k;
     if (['catTitle', 'catFinal', 'catWin'].includes(k)) return 'premiazione';    // i 4 premi: suspense
+    if (k === 'pegno') { const pg = pegnoCorrente(s, T.serata.tv || {}); if (pg && pg.supporto === 'amore') return 'amore'; }  // dichiarazione d'amore
     if (k === 'fine') return 'festa';                                              // slide degli auguri: si balla
     if (['famFinal', 'famWin', 'clAd', 'clFam'].includes(k)) return 'finale';      // famiglie e classifica
     return 'pegni';                                                               // pegni e bimbi: si ride
@@ -164,7 +165,7 @@ function gruppoMusica() {
 }
 // lista dei brani del momento; se manca, usa quella del momento più simile
 function listaMusica(g) {
-  const L = C.MUSICA || {}, riserva = { pegni: 'cena', finale: 'festa' };
+  const L = C.MUSICA || {}, riserva = { pegni: 'cena', finale: 'festa', amore: 'pegni' };
   return (L[g] && L[g].length) ? L[g] : (L[riserva[g]] || []);
 }
 
@@ -178,7 +179,7 @@ try { SP.refresh = JSON.parse(localStorage.getItem('pigiama-spotify') || '{}').r
 const spotifyAttivo = () => !!(SPC.clientId && SP.pronto && SP.device);
 function spUri(x) { if (!x) return null; const m = String(x).match(/(playlist|album)[/:]([A-Za-z0-9]+)/); return m ? `spotify:${m[1]}:${m[2]}` : x; }
 const idDi = u => { const m = String(u || '').match(/(playlist|album)[/:]([A-Za-z0-9]+)/); return m ? m[2] : u || null; };
-function spPlaylist(g) { const L = SPC.playlist || {}, riserva = { pegni: 'cena', finale: 'festa' }; return spUri(L[g] || L[riserva[g]]); }
+function spPlaylist(g) { const L = SPC.playlist || {}, riserva = { pegni: 'cena', finale: 'festa', amore: 'pegni' }; return spUri(L[g] || L[riserva[g]] || (g === 'amore' ? L.cena : null)); }
 function b64url(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
 async function spCollega() {
   const v = b64url(crypto.getRandomValues(new Uint8Array(48)));
@@ -283,6 +284,7 @@ function musicaSpotify(gruppo, cfg) {
 function aggiornaMusica() {
   const el = $('musica'), cfg = (T.serata.tv && T.serata.tv.musica) || {}, liste = C.MUSICA || {};
   if (!T.avviato) return;
+  if (T.video) { el.pause(); if (spotifyAttivo()) SP.player.pause(); return; }
   // Spotify se c'è una playlist per questo momento, altrimenti gli MP3
   if (spotifyAttivo() && spPlaylist(gruppoMusica())) { el.pause(); musicaSpotify(gruppoMusica(), cfg); return; }
   if (spotifyAttivo() && T.musicaGruppo !== gruppoMusica()) { SP.player.pause(); T.musicaGruppo = null; }
@@ -425,23 +427,87 @@ function vistaSpareggio(cat) {
     <div class="fin" style="margin-top:0">${sp.candidati.map(id => { const p = pers(id); return `<div>${av(p, 150)}${esc(nomeCompleto(p))}</div>`; }).join('')}</div>
     <div class="s" style="margin-top:22px">Aprite l'app per votare! · Hanno votato ${votanti}/${adulti}</div></div>`;
 }
-function vistaPegno(s, tv) {
-  const p = pers(s.pid), chiave = s.pid + '-' + s.g, pid = (tv.draws || {})[chiave];
+function pegnoCorrente(s, tv) {
+  if (!s || s.k !== 'pegno') return null;
+  const chiave = s.pid + '-' + s.g, pid = (tv.draws || {})[chiave];
   // il pegno si vede solo quando la ruota si è fermata (o se il giro è vecchio: TV riaperta dopo)
   const inGiro = T.girando || (tv.spin && tv.spin.key === chiave && T.spinFinito !== tv.spin.at && Date.now() - tv.spin.at < 9000);
-  const pg = pid && !inGiro ? T.pegni.find(x => x.id === pid) : null;
-  const karaoke = pg && pg.supporto === 'karaoke';
-  const brano = karaoke && tv.karaoke ? T.brani.find(b => b.id === tv.karaoke) : null;
+  return pid && !inGiro ? T.pegni.find(x => x.id === pid) || null : null;
+}
+function vistaPegno(s, tv) {
+  const p = pers(s.pid), pg = pegnoCorrente(s, tv);
+  const carte = pg && ['mimo', 'canzone'].includes(pg.supporto);
+  const indovinato = carte && tv.indovinato && tv.indovinato.testo;
+  // karaoke: i titoli occupano tutto lo schermo, così scelgono tutti
+  if (pg && pg.supporto === 'karaoke') return vistaKaraoke(p, s, tv);
   return `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:space-around;padding:40px">
     <div style="display:flex;flex-direction:column;align-items:center;gap:16px;width:560px;text-align:center">
       ${av(p, 170)}<div class="f" style="font-size:50px">${esc(nomeCompleto(p))}</div>
       <div class="s">Senza pigiama… paga pegno!</div><div class="card" style="font-size:22px;padding:8px 18px">Pegno ${s.g} di 2</div>
       ${pg ? `<div class="card pop" style="font-size:32px;font-weight:800;border-color:var(--acc)">${esc(pg.testo)}</div>` : ''}
       <div id="timerbox"></div>
-      ${tv.card && pg && ['mimo', 'canzone'].includes(pg.supporto) ? `<div class="card" style="font-size:24px">Carta pescata: la vede solo l'organizzatore</div>` : ''}
-      ${karaoke ? (brano ? `<div class="karaoke"><div class="s" style="margin-bottom:10px">Si canta:</div><a href="${esc(brano.url)}" target="_blank" rel="noopener">${esc(brano.titolo)} ▶</a></div>`
-        : T.brani.length ? `<div class="card" style="font-size:22px;text-align:left">${T.brani.map((b, i) => `<div>${i + 1}. ${esc(b.titolo)}</div>`).join('')}</div>` : '') : ''}
-    </div>${ruotaSVG()}</div>`;
+      ${carte && tv.card && !indovinato ? `<div class="card" style="font-size:24px">Carta pescata: la vede solo l'organizzatore</div>` : ''}
+    </div>${indovinato ? `<div class="pop" style="width:560px;text-align:center"><div class="s acc" style="font-size:40px">Indovinato!</div>
+      <div class="card" style="margin-top:18px;padding:30px 26px;border-color:var(--acc)"><div class="s" style="font-size:24px">${pg.supporto === 'mimo' ? 'Il film era' : 'La canzone era'}</div><div class="t" style="font-size:64px;margin-top:10px">${esc(indovinato)}</div></div></div>` : ruotaSVG()}</div>`;
+}
+function vistaKaraoke(p, s, tv) {
+  const n = T.brani.length;
+  const col = n <= 4 ? 2 : n <= 9 ? 3 : n <= 16 ? 4 : n <= 25 ? 5 : 6;
+  const righe = Math.max(1, Math.ceil(n / col)), font = Math.max(16, Math.min(34, Math.floor(430 / righe / 1.9)));
+  return `<div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:30px 40px 84px;gap:18px">
+    <div class="row" style="gap:20px;justify-content:center">${av(p, 90)}<div><div class="f" style="font-size:44px">${esc(nome(p))} canta!</div><div class="s" style="font-size:24px">Scegliete tutti insieme la canzone</div></div></div>
+    ${n ? `<div style="flex:1;display:grid;grid-template-columns:repeat(${col},1fr);grid-auto-rows:1fr;gap:12px">${T.brani.map((b, i) => `<div class="card in" style="animation-delay:${Math.min(i, 30) * 30}ms;display:flex;align-items:center;gap:12px;padding:8px 16px;font-size:${font}px;font-weight:800${tv.karaoke === b.id ? ';border:3px solid var(--acc);color:#1B2346;background:linear-gradient(180deg,#FFD47E,#FFC145);transform:scale(1.04);box-shadow:0 0 34px rgba(255,200,87,.55)' : ''}"><span style="font-family:Fredoka;color:${tv.karaoke === b.id ? '#1B2346' : 'var(--acc)'}">${i + 1}</span><span style="line-height:1.15">${esc(b.titolo)}</span></div>`).join('')}</div>`
+      : '<div class="s" style="text-align:center;margin-top:60px">Nessuna canzone: aggiungile dalla Regia, nelle Impostazioni</div>'}
+  </div>${luci()}`;
+}
+
+// ---------------------------------------------------------------- video karaoke a tutto schermo (YouTube)
+function idYoutube(u) { const m = String(u || '').match(/(?:youtu\.be\/|v=|embed\/|shorts\/|live\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; }
+function caricaYoutube() {
+  if (caricaYoutube.p) return caricaYoutube.p;
+  caricaYoutube.p = new Promise(res => {
+    if (window.YT && window.YT.Player) return res();
+    window.onYouTubeIframeAPIReady = res;
+    const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s);
+  });
+  return caricaYoutube.p;
+}
+async function controllaVideo() {
+  const tv = T.serata.tv || {}, s = passoCorrente(), pg = pegnoCorrente(s, tv);
+  const vuole = pg && pg.supporto === 'karaoke' && tv.karaoke && tv.karaokeAt && T.videoFinito !== tv.karaokeAt
+    ? T.brani.find(b => b.id === tv.karaoke) : null;
+  if (!vuole) { if (T.video) chiudiVideo(false); return; }
+  if (T.video && T.video.at === tv.karaokeAt) {         // pausa / riprendi dalla Regia
+    const pl = T.video.player;
+    if (pl && pl.pauseVideo) { try { tv.karaokePausa ? pl.pauseVideo() : pl.playVideo(); } catch (e) { /* niente */ } }
+    return;
+  }
+  const id = idYoutube(vuole.url);
+  if (!id) { avvisoSpotify('Il link di "' + vuole.titolo + '" non è un video YouTube valido'); T.videoFinito = tv.karaokeAt; return; }
+  chiudiVideo(false);
+  T.video = { at: tv.karaokeAt };
+  aggiornaMusica();                                   // la musica di sottofondo si ferma
+  const box = $('video'); box.style.display = 'block'; box.innerHTML = '<div id="ytplayer"></div>';
+  await caricaYoutube();
+  if (!T.video || T.video.at !== tv.karaokeAt) return;
+  T.video.player = new YT.Player('ytplayer', {
+    width: 1280, height: 720, videoId: id,
+    playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, iv_load_policy: 3, fs: 0 },
+    events: {
+      onReady: e => { try { e.target.unMute(); e.target.setVolume(100); e.target.playVideo(); } catch (x) { /* niente */ } },
+      onStateChange: e => { if (e.data === 0) chiudiVideo(true); },        // finito
+      onError: () => { avvisoSpotify('Questo video non si può riprodurre qui (il proprietario lo blocca fuori da YouTube): scegline un altro'); chiudiVideo(true); }
+    }
+  });
+}
+function chiudiVideo(finito) {
+  const v = T.video; if (!v) return;
+  if (finito) T.videoFinito = v.at;
+  try { v.player && v.player.destroy(); } catch (e) { /* niente */ }
+  T.video = null;
+  const box = $('video'); box.style.display = 'none'; box.innerHTML = '';
+  aggiornaMusica();                                   // riprende la musica di prima
+  disegna();
 }
 function ruotaSVG() {
   const lista = T.pegni.filter(p => p.attivo); const n = lista.length || 1, seg = 360 / n, R = 250;
@@ -463,7 +529,7 @@ function scena() {
   if (f === 'votazioni_chiuse') return `<div class="c"><div class="t in">Votazioni <span class="acc">chiuse</span></div><div class="s in2" style="margin-top:24px">Tra poco la premiazione…</div></div>${luci()}`;
   return vistaPremiazione();
 }
-function chiaveScena() { const tv = T.serata.tv || {}; return T.serata.fase + '|' + (tv.i == null ? '' : tv.i) + '|' + (T.rivelato ? 1 : 0) + '|' + (T.sp ? T.sp.id : '') + '|' + (T.girando ? 'g' : '') + (T.spinFinito || ''); }
+function chiaveScena() { const tv = T.serata.tv || {}; return T.serata.fase + '|' + (tv.i == null ? '' : tv.i) + '|' + (T.rivelato ? 1 : 0) + '|' + (T.sp ? T.sp.id : '') + '|' + (T.girando ? 'g' : '') + (T.spinFinito || '') + '|' + ((tv.indovinato || {}).at || ''); }
 function disegna() {
   if (T.girando) return;
   // ridisegna solo se qualcosa è cambiato: altrimenti le animazioni d'ingresso ripartono di continuo
@@ -550,7 +616,7 @@ function giraRuota(spin) {
     g.style.transition = 'transform 4.2s cubic-bezier(.12,.6,.1,1)'; g.style.transform = `rotate(${T.ruota}deg)`;
   });
   let k = 0; const iv = setInterval(() => { suoni.tic(); if (++k > 30) clearInterval(iv); }, 140);
-  setTimeout(() => { T.girando = false; T.spinFinito = spin.at; suoni.ding(); coriandoli(60); disegna(); }, 4300);
+  setTimeout(() => { T.girando = false; T.spinFinito = spin.at; suoni.ding(); coriandoli(60); disegna(); aggiornaMusica(); }, 4300);
 }
 function avviaTimer(t) {
   fermaTimer();
@@ -597,6 +663,9 @@ async function suCambioSerata(nuova) {
   if (cdN.ora && cdN.ora !== cdP.ora) { T.cdStart = Date.now(); T.cdChiuso = null; }
   if (cambiataFase) aggiornaMusica();
   if (JSON.stringify(tvP.musica) !== JSON.stringify(tvN.musica)) aggiornaMusica();
+  // titolo indovinato nel mimo / indovina la canzone
+  if (tvN.indovinato && (!tvP.indovinato || tvN.indovinato.at !== tvP.indovinato.at)) { suoni.applausi(); coriandoli(160); }
+  controllaVideo();
 }
 // Quando lo spareggio si chiude (o si allunga) aggiorna risultati e timer
 async function suCambioSpareggio() {
