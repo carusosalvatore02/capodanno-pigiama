@@ -587,10 +587,11 @@ async function preparaCartella() { T.cartellaHandle = await kv.get('cartella-kar
 async function collegaCartella(conTocco) {
   const h = T.cartellaHandle; if (!h) return aggiornaStatoCartella();
   try {
-    let perm = await h.queryPermission({ mode: 'read' });
-    if (perm !== 'granted' && conTocco) perm = await h.requestPermission({ mode: 'read' });
+    // con il tocco la richiesta parte subito, senza attese prima: altrimenti il browser non mostra la finestrella
+    const perm = conTocco ? await h.requestPermission({ mode: 'read' }) : await h.queryPermission({ mode: 'read' });
     if (perm === 'granted') await leggiCartella(h);
-  } catch (e) { console.warn(e); }
+    else if (conTocco) avvisoSpotify('Accesso alla cartella dei video non consentito: tocca "Consenti accesso ai video" nella schermata iniziale');
+  } catch (e) { console.warn(e); if (conTocco) avvisoSpotify('Cartella dei video non raggiungibile: sceglila di nuovo dalla schermata iniziale'); }
   aggiornaStatoCartella();
 }
 async function scegliCartella() {
@@ -617,7 +618,10 @@ function aggiornaStatoCartella() {
       ${manca.length ? `<div style="font-size:14px;opacity:.85;margin-top:4px">Senza video: ${manca.map(b => esc(b.titolo)).join(' · ')}</div>` : ''}
       <div><button class="btn ghost" id="kcartella" style="margin-top:8px;min-height:40px;font-size:15px">Cambia cartella</button></div>`;
   } else if (T.cartellaHandle) {
-    el.innerHTML = 'Video karaoke: premi "Avvia schermo TV" e consenti l\'accesso alla cartella';
+    el.innerHTML = `Video karaoke: cartella "${esc(T.cartellaHandle.name)}" da riaprire
+      <div><button class="btn ghost" id="kconsenti" style="margin-top:8px">Consenti accesso ai video</button> <button class="btn ghost" id="kcartella" style="margin-top:8px">Scegli un'altra cartella</button></div>
+      <div style="font-size:14px;opacity:.85;margin-top:4px">Nella finestrella di Chrome scegli "Consenti a ogni visita": così non lo chiede più.</div>`;
+    const k = $('kconsenti'); if (k) k.onclick = () => collegaCartella(true);
   } else {
     el.innerHTML = '<button class="btn ghost" id="kcartella">Scegli la cartella dei video karaoke</button>';
   }
@@ -985,6 +989,7 @@ function schermataAvvio(msg) {
   aggiornaStatoSpotify(); spPrepara(); preparaCartella();
   $('avvia').onclick = async () => {
     if (T.cartellaHandle && !T.videoLocali) collegaCartella(true);   // chiede il permesso alla cartella con questo tocco
+    else if (!T.cartellaHandle) kv.get('cartella-karaoke').then(h => { if (h) { T.cartellaHandle = h; collegaCartella(false); } });
     ac(); suoni.ding();
     if (SP.player && SP.player.activateElement) SP.player.activateElement();   // il browser vuole un tocco per far suonare Spotify
     try { await document.documentElement.requestFullscreen(); } catch (e) { /* facoltativo */ }
